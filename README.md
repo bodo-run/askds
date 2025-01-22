@@ -19,12 +19,6 @@ export DEEPSEEK_API_KEY="your-api-key"
 askds npm test
 ```
 
-With debug mode:
-
-```bash
-askds --debug npm test
-```
-
 ## Configuration
 
 Set these environment variables to customize behavior:
@@ -49,4 +43,10 @@ askds --system-prompt="./prompts/fix-test.txt" cargo test
 
 ```bash
 askds --hide-reasoning cargo test
+```
+
+### Debug mode
+
+```bash
+askds --debug npm test
 ```
