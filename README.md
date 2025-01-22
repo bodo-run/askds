@@ -4,7 +4,11 @@
 
 For repo serialization, it uses [`yek`](https://github.com/bodo-run/yek) to serialize the repository.
 
-![screencast](./docs/screencast.mp4)
+
+
+[Screencast](https://github.com/user-attachments/assets/477e92e2-6701-4138-8ffb-c910ef61571e)
+
+
 
 ## Installation
 
