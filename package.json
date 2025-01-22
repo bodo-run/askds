@@ -4,9 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js",
+    "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "test": "vitest --watch=false"
   },
   "keywords": [],
   "author": "",
@@ -15,7 +16,8 @@
     "@types/node": "^22.10.7",
     "tslib": "^2.8.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.3"
   },
   "dependencies": {
     "@types/blessed": "^0.1.25",

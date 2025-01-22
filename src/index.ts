@@ -250,21 +250,25 @@ function createBlessedUI(): BlessedUI {
   return { screen, outputScreen: testResultsLog, reasoningLog };
 }
 
+function debug(...messages: string[]) {
+  ui.outputScreen.setContent(
+    `${ui.outputScreen.getContent()}\n${messages.join("\n")}`
+  );
+  ui.screen.render();
+  fs.appendFileSync("log.txt", messages.join("\n"));
+}
+
 function printReasoningContent(chunkJsonLine = "data: {}", config: Config) {
   try {
     const json = JSON.parse(chunkJsonLine.split(":")[1])[0];
     const newReasoningContent = json.delta.reasoning_content;
     if (newReasoningContent) {
       if (config.debug) {
-        console.debug("newReasoningContent", newReasoningContent);
+        debug("newReasoningContent", newReasoningContent);
       }
-      const cleanContent = newReasoningContent
-        .replace(/^\n+/, "") // Remove leading newlines
-        .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
-        .replace(/\s+$/, ""); // Remove trailing whitespace
 
       const currentContent = ui.reasoningLog.getContent();
-      ui.reasoningLog.setContent(currentContent + cleanContent);
+      ui.reasoningLog.setContent(currentContent + newReasoningContent);
       ui.screen.render();
       return;
     }
@@ -272,9 +276,9 @@ function printReasoningContent(chunkJsonLine = "data: {}", config: Config) {
     // it's not a delta
   }
 
-  const parts = chunkJsonLine.split("data: ");
+  const parts = chunkJsonLine.split(": ");
   if (parts.length < 2) {
-    console.debug(`Invalid chunk: ${chunkJsonLine}`);
+    debug(`Invalid chunk: ${chunkJsonLine}`);
     return;
   }
 
@@ -284,16 +288,13 @@ function printReasoningContent(chunkJsonLine = "data: {}", config: Config) {
       json?.choices?.[0]?.delta?.reasoning_content ||
       json?.delta?.reasoning_content;
     if (newReasoningContent) {
-      const cleanContent = newReasoningContent
-        .replace(/^\n+/, "") // Remove leading newlines
-        .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
-        .replace(/\s+$/, ""); // Remove trailing whitespace
+      const cleanContent = newReasoningContent;
       const currentContent = ui.reasoningLog.getContent();
       ui.reasoningLog.setContent(currentContent + cleanContent);
       ui.screen.render();
     }
   } catch (error: unknown) {
-    console.debug(`Error parsing JSON: ${error}`);
+    debug(`Error parsing JSON: ${error}`);
   }
 }
 
@@ -313,16 +314,21 @@ async function streamAIResponse(
         },
       },
       (res) => {
-        let response = "";
+        let responses: any[] = [];
         res.on("data", (chunk) => {
           const chunkStr = chunk.toString();
+          handleErrorChunk(chunkStr, config);
           if (!config.hideReasoning) {
             printReasoningContent(chunkStr, config);
           }
-          handleErrorChunk(chunkStr, config);
-          response += chunkStr;
+          try {
+            const json = JSON.parse(chunkStr.split(": ")[1]);
+            responses.push(json);
+          } catch (error) {
+            debug(`Error parsing JSON: ${chunkStr}`);
+          }
         });
-        res.on("end", () => resolve(response));
+        res.on("end", () => resolve(responses.join("")));
       }
     );
 
@@ -397,21 +403,17 @@ async function main() {
     ui.outputScreen.setContent(`${currentContent}\nAnalyzing test failures...`);
     ui.screen.render();
 
-    const aiResponse = await streamAIResponse(config, messages);
+    const aiResponses = await streamAIResponse(config, messages);
 
     await fs.promises.writeFile(
       config.historyFile,
-      JSON.stringify(
-        [...messages, { role: "assistant", content: aiResponse }],
-        null,
-        2
-      )
+      JSON.stringify([...messages, ...aiResponses], null, 2)
     );
 
     ui.outputScreen.destroy();
     ui.reasoningLog.destroy();
     ui.screen.destroy();
-    console.log(aiResponse);
+    console.log(aiResponses);
   } catch (error) {
     ui.outputScreen.destroy();
     ui.reasoningLog.destroy();
