@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { execSync, spawn } from "child_process";
-import https from "https";
 import fs from "fs";
 import path from "path";
 import { program } from "commander";
-import process, { config } from "process";
+import process from "process";
 import blessed from "blessed";
+import OpenAI from "openai";
 
 interface Config {
   debug: boolean;
@@ -184,17 +184,6 @@ async function getChatHistory(config: Config): Promise<Message[]> {
     ];
   }
 }
-function handleErrorChunk(chunk: string, config: Config) {
-  try {
-    const json = JSON.parse(chunk);
-    if (json.error) {
-      console.error("Error:", json.error.message);
-      process.exit(1);
-    }
-  } catch {
-    // it's not an error
-  }
-}
 
 interface BlessedUI {
   screen: blessed.Widgets.Screen;
@@ -258,90 +247,43 @@ function debug(...messages: string[]) {
   fs.appendFileSync("log.txt", messages.join("\n"));
 }
 
-function printReasoningContent(chunkJsonLine = "data: {}", config: Config) {
-  try {
-    const json = JSON.parse(chunkJsonLine.split(":")[1])[0];
-    const newReasoningContent = json.delta.reasoning_content;
-    if (newReasoningContent) {
-      if (config.debug) {
-        debug("newReasoningContent", newReasoningContent);
-      }
-
-      const currentContent = ui.reasoningLog.getContent();
-      ui.reasoningLog.setContent(currentContent + newReasoningContent);
-      ui.screen.render();
-      return;
-    }
-  } catch (error: unknown) {
-    // it's not a delta
-  }
-
-  const parts = chunkJsonLine.split(": ");
-  if (parts.length < 2) {
-    debug(`Invalid chunk: ${chunkJsonLine}`);
-    return;
-  }
-
-  try {
-    const json = JSON.parse(parts[1]);
-    const newReasoningContent =
-      json?.choices?.[0]?.delta?.reasoning_content ||
-      json?.delta?.reasoning_content;
-    if (newReasoningContent) {
-      const cleanContent = newReasoningContent;
-      const currentContent = ui.reasoningLog.getContent();
-      ui.reasoningLog.setContent(currentContent + cleanContent);
-      ui.screen.render();
-    }
-  } catch (error: unknown) {
-    debug(`Error parsing JSON: ${error}`);
-  }
-}
-
 async function streamAIResponse(
   config: Config,
   messages: Message[]
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        hostname: "api.deepseek.com",
-        path: "/chat/completions",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-      },
-      (res) => {
-        let responses: any[] = [];
-        res.on("data", (chunk) => {
-          const chunkStr = chunk.toString();
-          handleErrorChunk(chunkStr, config);
-          if (!config.hideReasoning) {
-            printReasoningContent(chunkStr, config);
-          }
-          try {
-            const json = JSON.parse(chunkStr.split(": ")[1]);
-            responses.push(json);
-          } catch (error) {
-            debug(`Error parsing JSON: ${chunkStr}`);
-          }
-        });
-        res.on("end", () => resolve(responses.join("")));
-      }
-    );
-
-    req.on("error", reject);
-    req.write(
-      JSON.stringify({
-        model: "deepseek-reasoner",
-        messages,
-        stream: true,
-      })
-    );
-    req.end();
+  const openai = new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: "https://api.deepseek.com", // Fixed base URL
   });
+
+  const stream = await openai.chat.completions.create({
+    model: "deepseek-reasoner",
+    messages,
+    stream: true,
+  });
+
+  let fullContent = "";
+  let fullReasoning = "";
+
+  for await (const chunk of stream) {
+    // Handle both content and reasoning_content
+    const contentChunk = chunk.choices[0]?.delta?.content || "";
+    // @ts-ignore
+    const reasoningChunk = chunk.choices[0]?.delta?.reasoning_content || "";
+
+    fullContent += contentChunk;
+    fullReasoning += reasoningChunk;
+
+    // Display reasoning content if not hidden
+    if (!config.hideReasoning) {
+      const displayText = reasoningChunk || contentChunk;
+      ui.reasoningLog.setContent(ui.reasoningLog.getContent() + displayText);
+      ui.screen.render();
+    }
+  }
+
+  // Prioritize content over reasoning for final response
+  return fullContent || fullReasoning;
 }
 
 async function getGitDiff(config: Config) {
@@ -407,7 +349,11 @@ async function main() {
 
     await fs.promises.writeFile(
       config.historyFile,
-      JSON.stringify([...messages, ...aiResponses], null, 2)
+      JSON.stringify(
+        [...messages, { role: "assistant", content: aiResponses }],
+        null,
+        2
+      )
     );
 
     ui.outputScreen.destroy();

@@ -22,6 +22,8 @@
   "dependencies": {
     "@types/blessed": "^0.1.25",
     "blessed": "^0.1.81",
-    "commander": "^13.1.0"
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "openai": "^4.79.4"
   }
 }
