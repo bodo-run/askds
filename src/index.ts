@@ -52,7 +52,10 @@ function loadConfig(): Config {
     .option("--debug", "Enable debug mode")
     .option("--serialize <command>", "Repository serialization command")
     .option("--system-prompt <file>", "Path to system prompt file")
-    .option("--hide-reasoning", "Hide reasoning content")
+    .option(
+      "--hide-reasoning",
+      "Hide reasoning UI. Enable if you want to pipe the output to another command"
+    )
     .arguments("[testCommand...]")
     .action((testCommand) => {
       program.opts().testCommand = testCommand.join(" ");
@@ -72,6 +75,7 @@ function loadConfig(): Config {
     serializeCommand:
       program.opts().serialize || DEFAULT_CONFIG.serializeCommand,
     testCommand: program.opts().testCommand,
+    hideReasoning: program.opts().hideReasoning || false,
     systemPromptFile: program.opts().systemPrompt,
   };
 }
@@ -116,7 +120,7 @@ async function runTestCommand(
   const [cmd, ...args] = testCommand.split(/\s+/);
   try {
     if (config.debug) {
-      ui.outputLog.add(`Running test command: ${testCommand}`);
+      ui.appendOutputLog(`Running test command: ${testCommand}`);
     }
     const output = await executeCommand(cmd, args);
     return output;
@@ -132,7 +136,7 @@ async function serializeRepository(
   const [cmd, ...args] = command.split(/\s+/);
   const result = await executeCommand(cmd, args);
   if (config.debug) {
-    ui.outputLog.add(`Serialized repository size: ${result.length}`);
+    ui.appendOutputLog(`Serialized repository size: ${result.length}`);
   }
   return result;
 }
@@ -165,7 +169,7 @@ function findTestFiles(output: string, config: Config): string[] {
           }
         });
       } catch (error) {
-        ui.outputLog.add(`Error searching ${dir}: ${error}`);
+        ui.appendOutputLog(`Error searching ${dir}: ${error}`);
       }
     }
   }
@@ -179,9 +183,7 @@ async function getGitDiff(config: Config) {
     return "";
   }
   if (config.debug) {
-    const currentContent = ui.outputLog.getContent();
-    ui.outputLog.add(`${currentContent}\nGit Diff:\n${diff}`);
-    ui.screen.render();
+    ui.appendOutputLog(`Git Diff:\n${diff}`);
   }
   return diff;
 }
@@ -189,91 +191,123 @@ async function getGitDiff(config: Config) {
 const filterCursorCodes = (text: string) => text.replace(/\x1B\[\?25[hl]/g, "");
 
 interface BlessedUI {
-  screen: blessed.Widgets.Screen;
-  grid: contrib.grid;
-  outputLog: contrib.Widgets.LogElement;
-  reasoningLog: contrib.Widgets.LogElement;
+  initialize: () => void;
   appendOutputLog: (text: string) => void;
   appendReasoningLog: (text: string) => void;
+  render: () => void;
+  destroy: () => void;
 }
 
 function createBlessedUI(): BlessedUI {
-  const screen = blessed.screen({
-    smartCSR: true,
-    title: "DeepSeek Test Analyzer",
-    fullUnicode: true,
-    terminal: "xterm-256color", // Explicit terminal type
-  });
+  let initialized = false;
+  let screen: blessed.Widgets.Screen;
+  let grid: contrib.grid;
+  let outputLog: contrib.Widgets.LogElement;
+  let reasoningLog: contrib.Widgets.LogElement;
+  function initialize() {
+    if (initialized) return;
+    initialized = true;
+    screen = blessed.screen({
+      smartCSR: true,
+      title: "DeepSeek Test Analyzer",
+      fullUnicode: true,
+      terminal: "xterm-256color", // Explicit terminal type
+    });
 
-  const grid = new contrib.grid({
-    rows: 2,
-    cols: 1,
-    screen,
-  });
+    grid = new contrib.grid({
+      rows: 2,
+      cols: 1,
+      screen,
+    });
 
-  const outputLog = grid.set(0, 0, 1, 1, contrib.log, {
-    label: " Test Results ",
-    bufferLength: 1000,
-    scrollable: true,
-    input: true,
-    mouse: true,
-    keys: true,
-    ansi: true,
-    scrollbar: true,
-    style: {
-      fg: "inherit",
-      bg: "inherit",
-      border: { fg: "cyan" },
-    },
-  });
+    outputLog = grid.set(0, 0, 1, 1, contrib.log, {
+      label: " Test Results ",
+      bufferLength: 1000,
+      scrollable: true,
+      input: true,
+      mouse: true,
+      keys: true,
+      ansi: true,
+      scrollbar: true,
+      style: {
+        fg: "inherit",
+        bg: "inherit",
+        border: { fg: "cyan" },
+      },
+    });
 
-  const reasoningLog = grid.set(1, 0, 1, 1, contrib.log, {
-    label: " Reasoning ",
-    bufferLength: 1000,
-    scrollable: true,
-    input: true,
-    mouse: true,
-    keys: true,
-    ansi: true,
-    scrollbar: true,
-    style: {
-      text: "gray",
-      bg: "inherit",
-      fg: "inherit",
-      border: { fg: "green" },
-    },
-  });
+    reasoningLog = grid.set(1, 0, 1, 1, contrib.log, {
+      label: " Reasoning ",
+      bufferLength: 1000,
+      scrollable: true,
+      input: true,
+      mouse: true,
+      keys: true,
+      ansi: true,
+      scrollbar: true,
+      style: {
+        text: "gray",
+        bg: "inherit",
+        fg: "inherit",
+        border: { fg: "green" },
+      },
+    });
 
-  screen.key(["escape", "q", "C-c"], () => {
-    screen.destroy();
-    process.exit(0);
-  });
+    screen.key(["escape", "q", "C-c"], () => {
+      screen.destroy();
+      process.exit(0);
+    });
 
-  screen.render();
+    return {
+      initialize,
+      screen,
+      grid,
+      outputLog,
+      reasoningLog,
+    };
+  }
 
   function appendOutputLog(text: string) {
-    ui.outputLog.setContent(
-      ui.outputLog.getContent() + filterCursorCodes(text)
-    );
-    ui.outputLog.scrollTo(ui.outputLog.getScrollHeight());
-    ui.screen.render();
+    if (!initialized) {
+      return;
+    }
+    outputLog.setContent(outputLog.getContent() + filterCursorCodes(text));
+    outputLog.scrollTo(outputLog.getScrollHeight());
+    render();
   }
 
   function appendReasoningLog(text: string) {
-    ui.reasoningLog.setContent(
-      ui.reasoningLog.getContent() + filterCursorCodes(text)
+    if (!initialized) {
+      return;
+    }
+    reasoningLog.setContent(
+      reasoningLog.getContent() + filterCursorCodes(text)
     );
-    ui.reasoningLog.scrollTo(ui.reasoningLog.getScrollHeight());
-    ui.screen.render();
+    reasoningLog.scrollTo(reasoningLog.getScrollHeight());
+    render();
+  }
+
+  function render() {
+    if (!initialized) {
+      return;
+    }
+
+    screen.render();
+  }
+
+  function destroy() {
+    if (!initialized) {
+      return;
+    }
+    screen.destroy();
   }
 
   return {
-    screen,
-    grid,
-    outputLog,
-    reasoningLog,
+    initialize,
     appendOutputLog,
     appendReasoningLog,
+    render,
+    destroy,
   };
 }
 
@@ -317,10 +351,13 @@ async function streamAIResponse(
 
 async function main() {
   const config = loadConfig();
+
+  if (!config.hideReasoning) {
+    ui.initialize();
+  }
+
   if (config.debug) {
-    const debugContent = `Configuration: ${JSON.stringify(config)}`;
-    ui.outputLog.add(debugContent);
-    ui.screen.render();
+    ui.appendOutputLog(`Configuration: ${JSON.stringify(config)}`);
   }
 
   try {
@@ -333,8 +370,7 @@ async function main() {
     ui.appendOutputLog(testOutput);
 
     if (config.debug) {
-      ui.outputLog.add(`gitDiff: ${gitDiff}`);
-      ui.screen.render();
+      ui.appendReasoningLog(`gitDiff: ${gitDiff}`);
     }
 
     const testFiles = findTestFiles(testOutput, config);
@@ -365,10 +401,10 @@ async function main() {
     ui.appendReasoningLog("Analyzing test failures...\n");
     const aiResponses = await streamAIResponse(config, messages);
 
-    ui.screen.destroy();
+    ui.destroy();
     console.log(aiResponses);
   } catch (error) {
-    ui.screen.destroy();
+    ui.destroy();
     console.error("Error:", error);
   }
 }

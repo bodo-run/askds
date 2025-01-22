@@ -39,8 +39,20 @@ Set these environment variables to customize behavior:
 
 ## Examples
 
+### Serialization
+
+See [`yek`](https://github.com/bodo-run/yek) for more information on serialization. You can run any command that outputs a string to the console for `--serialize`.
+
 ```bash
 askds --serialize="yek src/" npm test
+```
+
+### Asking any question
+
+Since we're running the command you provided to us to get the test results, you can run any arbitrary command to feed that to the AI agent.
+
+```bash
+askds --serialize="yek src/" echo "Review my changes"
 ```
 
 ### Writing your own prompts
