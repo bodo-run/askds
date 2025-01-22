@@ -76,14 +76,6 @@ function loadConfig(): Config {
   };
 }
 
-// Add ANSI sanitization function
-function sanitizeAnsi(text: string): string {
-  return text
-    .replace(/\x1B\[\?25[hl]/g, "") // Remove cursor visibility codes
-    .replace(/\x1B\]8;;.*?\x07/g, "") // Remove hyperlink sequences
-    .replace(/\x1B\[\?[0-9;]*[hl]/g, ""); // Remove other cursor control codes
-}
-
 async function executeCommand(
   command: string,
   args: string[],
@@ -102,15 +94,11 @@ async function executeCommand(
 
     let output = "";
     proc.stdout.on("data", (data) => {
-      const text = sanitizeAnsi(data.toString());
-      output += text;
-      ui.outputLog.log(text); // Add directly to log with ANSI parsing
+      output += data.toString();
     });
 
     proc.stderr.on("data", (data) => {
-      const text = sanitizeAnsi(data.toString());
-      output += text;
-      ui.outputLog.log(text); // Add directly to log with ANSI parsing
+      output += data.toString();
     });
 
     proc.on("close", (code) => {
@@ -203,6 +191,8 @@ interface BlessedUI {
   grid: contrib.grid;
   outputLog: contrib.Widgets.LogElement;
   reasoningLog: contrib.Widgets.LogElement;
+  appendOutputLog: (text: string) => void;
+  appendReasoningLog: (text: string) => void;
 }
 
 function createBlessedUI(): BlessedUI {
@@ -229,8 +219,8 @@ function createBlessedUI(): BlessedUI {
     ansi: true,
     scrollbar: true,
     style: {
-      fg: "white",
-      bg: "black",
+      fg: "inherit",
+      bg: "inherit",
       border: { fg: "cyan" },
     },
   });
@@ -245,9 +235,10 @@ function createBlessedUI(): BlessedUI {
     ansi: true,
     scrollbar: true,
     style: {
-      fg: "white",
-      bg: "black",
-      border: { fg: "cyan" },
+      text: "gray",
+      bg: "inherit",
+      fg: "inherit",
+      border: { fg: "green" },
     },
   });
 
@@ -258,17 +249,26 @@ function createBlessedUI(): BlessedUI {
 
   screen.render();
 
-  return { screen, grid, outputLog, reasoningLog };
-}
+  function appendOutputLog(text: string) {
+    ui.outputLog.setContent(ui.outputLog.getContent() + text);
+    ui.outputLog.scrollTo(ui.outputLog.getScrollHeight());
+    ui.screen.render();
+  }
 
-function debug(...messages: string[]) {
-  messages.forEach((msg) =>
-    sanitizeAnsi(msg)
-      .split("\n")
-      .forEach((line) => ui.outputLog.log(line))
-  );
-  ui.screen.render();
-  fs.appendFileSync("log.txt", messages.join("\n"));
+  function appendReasoningLog(text: string) {
+    ui.reasoningLog.setContent(ui.reasoningLog.getContent() + text);
+    ui.reasoningLog.scrollTo(ui.reasoningLog.getScrollHeight());
+    ui.screen.render();
+  }
+
+  return {
+    screen,
+    grid,
+    outputLog,
+    reasoningLog,
+    appendOutputLog,
+    appendReasoningLog,
+  };
 }
 
 async function streamAIResponse(
@@ -301,8 +301,7 @@ async function streamAIResponse(
     // Display reasoning content if not hidden
     if (!config.hideReasoning) {
       const displayText = reasoningChunk || contentChunk;
-      ui.reasoningLog.add(displayText);
-      ui.screen.render();
+      ui.appendReasoningLog(displayText);
     }
   }
 
@@ -325,8 +324,7 @@ async function main() {
       getGitDiff(config),
     ]);
 
-    testOutput.split("\n").forEach((line) => ui.outputLog.add(line));
-    ui.screen.render();
+    ui.appendOutputLog(testOutput);
 
     if (config.debug) {
       ui.outputLog.add(`gitDiff: ${gitDiff}`);
