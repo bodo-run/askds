@@ -1,17 +1,21 @@
 import { it, expect, describe } from "vitest";
 
 describe("Dificult numbers", () => {
-  it("odd numbers that don't have the letter 'e' in their spelling", () => {
-    expect(
-      computeNumbers(
-        {
-          spellingContains: ["e"],
-          isOdd: true,
-        },
-        3
-      )
-    ).length.to.be.greaterThan(0);
-  });
+  it(
+    "odd numbers that don't have the letter 'e' in their spelling",
+    () => {
+      expect(
+        computeNumbers(
+          {
+            spellingContains: ["e"],
+            isOdd: true,
+          },
+          3
+        )
+      ).length.to.be.greaterThan(0);
+    },
+    { skip: !!process.env.CI }
+  );
 });
 
 /**

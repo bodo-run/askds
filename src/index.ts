@@ -12,7 +12,6 @@ interface Config {
   testCommand: string;
   serializeCommand: string;
   apiKey: string;
-  historyFile: string;
   testDirs: string[];
   sourceDirs: string[];
   testFileExt: string;
@@ -37,7 +36,6 @@ const DEFAULT_PROMPT = [
 const DEFAULT_CONFIG: Omit<Config, "apiKey" | "testCommand"> = {
   debug: false,
   serializeCommand: "yek",
-  historyFile: path.join(process.cwd(), ".askai_history.json"),
   testDirs: ["test", "tests"],
   sourceDirs: ["src"],
   testFileExt: ".ts",
@@ -167,22 +165,17 @@ function findTestFiles(output: string, config: Config): string[] {
   return Array.from(testFiles);
 }
 
-async function getChatHistory(config: Config): Promise<Message[]> {
-  try {
-    const content = await fs.promises.readFile(config.historyFile, "utf8");
-    return JSON.parse(content);
-  } catch {
-    return [
-      {
-        role: "system",
-        content: config.systemPromptFile
-          ? fs.existsSync(config.systemPromptFile)
-            ? fs.readFileSync(config.systemPromptFile, "utf8")
-            : DEFAULT_PROMPT
-          : DEFAULT_PROMPT,
-      },
-    ];
+async function getGitDiff(config: Config) {
+  const diff = execSync("git diff | cat", { stdio: "pipe" }).toString();
+  if (diff.includes("No such file or directory")) {
+    return "";
   }
+  if (config.debug) {
+    const currentContent = ui.outputScreen.getContent();
+    ui.outputScreen.setContent(`${currentContent}\nGit Diff:\n${diff}`);
+    ui.screen.render();
+  }
+  return diff;
 }
 
 interface BlessedUI {
@@ -243,6 +236,7 @@ function debug(...messages: string[]) {
   ui.outputScreen.setContent(
     `${ui.outputScreen.getContent()}\n${messages.join("\n")}`
   );
+  ui.outputScreen.scrollTo(ui.outputScreen.getScrollHeight());
   ui.screen.render();
   fs.appendFileSync("log.txt", messages.join("\n"));
 }
@@ -278,25 +272,13 @@ async function streamAIResponse(
     if (!config.hideReasoning) {
       const displayText = reasoningChunk || contentChunk;
       ui.reasoningLog.setContent(ui.reasoningLog.getContent() + displayText);
+      ui.reasoningLog.scrollTo(ui.reasoningLog.getScrollHeight());
       ui.screen.render();
     }
   }
 
   // Prioritize content over reasoning for final response
   return fullContent || fullReasoning;
-}
-
-async function getGitDiff(config: Config) {
-  const diff = execSync("git diff | cat", { stdio: "pipe" }).toString();
-  if (diff.includes("No such file or directory")) {
-    return "";
-  }
-  if (config.debug) {
-    const currentContent = ui.outputScreen.getContent();
-    ui.outputScreen.setContent(`${currentContent}\nGit Diff:\n${diff}`);
-    ui.screen.render();
-  }
-  return diff;
 }
 
 async function main() {
@@ -314,9 +296,8 @@ async function main() {
       getGitDiff(config),
     ]);
 
-    ui.outputScreen.setContent(
-      [testOutput, repoStructure, gitDiff].join("\n\n")
-    );
+    ui.outputScreen.setContent(testOutput);
+    ui.outputScreen.scrollTo(ui.outputScreen.getScrollHeight());
     ui.screen.render();
 
     if (config.debug) {
@@ -330,31 +311,31 @@ async function main() {
       .map((file) => `// ${file}\n${fs.readFileSync(file, "utf8")}`)
       .join("\n\n");
 
-    const messages = await getChatHistory(config);
-    messages.push({
-      role: "user",
-      content: [
-        `## Repository Structure\n${repoStructure}`,
-        `## Test Output\n${testOutput}`,
-        `## Git Diff\n${gitDiff}`,
-        `## Test Files\n${testContents}`,
-      ].join("\n\n"),
-    });
+    const messages: Message[] = [
+      {
+        role: "system",
+        content: config.systemPromptFile
+          ? fs.existsSync(config.systemPromptFile)
+            ? fs.readFileSync(config.systemPromptFile, "utf8")
+            : DEFAULT_PROMPT
+          : DEFAULT_PROMPT,
+      },
+      {
+        role: "user",
+        content: [
+          `## Repository Structure\n${repoStructure}`,
+          `## Test Output\n${testOutput}`,
+          `## Git Diff\n${gitDiff}`,
+          `## Test Files\n${testContents}`,
+        ].join("\n\n"),
+      },
+    ];
 
     const currentContent = ui.outputScreen.getContent();
     ui.outputScreen.setContent(`${currentContent}\nAnalyzing test failures...`);
     ui.screen.render();
 
     const aiResponses = await streamAIResponse(config, messages);
-
-    await fs.promises.writeFile(
-      config.historyFile,
-      JSON.stringify(
-        [...messages, { role: "assistant", content: aiResponses }],
-        null,
-        2
-      )
-    );
 
     ui.outputScreen.destroy();
     ui.reasoningLog.destroy();
