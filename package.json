@@ -6,6 +6,9 @@
   "bin": {
     "askds": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsc",

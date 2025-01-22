@@ -1,8 +1,10 @@
-# `askds` - AI-powered test debugger
+# `askds` - DeepSeek R1-powered test debugger
 
-DeepSeek R1 powered test debugger that helps diagnose test failures using DeepSeek R1. It runs your tests and provides the results to an AI agent to analyze and suggest solutions.
+`askds` is a test debugger that helps diagnose test failures using DeepSeek R1. It runs your tests and provides the results to an AI agent to analyze and suggest solutions.
 
 For repo serialization, it uses [`yek`](https://github.com/bodo-run/yek) to serialize the repository.
+
+![screencast](./docs/screencast.mp4)
 
 ## Installation
 

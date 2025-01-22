@@ -2,4 +2,5 @@
 ignore_patterns = [
   "^node_modules/.*",
   "^yek.yaml$",
+  "pnpm-lock.yaml",
 ]
