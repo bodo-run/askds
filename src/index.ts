@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-import { spawn, execSync } from "child_process";
-import { createInterface } from "readline";
+import { spawn } from "child_process";
 import https from "https";
 import fs from "fs";
 import path from "path";
 import { program } from "commander";
-import process from "process";
-const blessed = require("blessed");
+import process, { config } from "process";
+import blessed from "blessed";
 
 interface Config {
   debug: boolean;
@@ -18,6 +17,7 @@ interface Config {
   sourceDirs: string[];
   testFileExt: string;
   systemPromptFile?: string;
+  hideReasoning: boolean;
 }
 
 interface Message {
@@ -42,6 +42,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey" | "testCommand"> = {
   sourceDirs: ["src"],
   testFileExt: ".ts",
   systemPromptFile: "",
+  hideReasoning: false,
 };
 
 function loadConfig(): Config {
@@ -50,6 +51,7 @@ function loadConfig(): Config {
     .option("--debug", "Enable debug mode")
     .option("--serialize <command>", "Repository serialization command")
     .option("--system-prompt <file>", "Path to system prompt file")
+    .option("--hide-reasoning", "Hide reasoning content")
     .arguments("[testCommand...]")
     .action((testCommand) => {
       program.opts().testCommand = testCommand.join(" ");
@@ -92,18 +94,31 @@ async function executeCommand(
   });
 }
 
-async function runTestCommand(testCommand: string): Promise<string> {
+async function runTestCommand(
+  testCommand: string,
+  config: Config
+): Promise<string> {
   const [cmd, ...args] = testCommand.split(/\s+/);
   try {
+    if (config.debug) {
+      console.debug("Running test command:", testCommand);
+    }
     return await executeCommand(cmd, args);
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
 }
 
-async function serializeRepository(command: string): Promise<string> {
+async function serializeRepository(
+  command: string,
+  config: Config
+): Promise<string> {
   const [cmd, ...args] = command.split(/\s+/);
-  return executeCommand(cmd, args);
+  const result = await executeCommand(cmd, args);
+  if (config.debug) {
+    console.debug("Serialized repository size:", result.length);
+  }
+  return result;
 }
 
 function findTestFiles(output: string, config: Config): string[] {
@@ -115,7 +130,9 @@ function findTestFiles(output: string, config: Config): string[] {
       .filter(Boolean) as string[]
   );
 
-  const searchDirs = [...config.testDirs, ...config.sourceDirs];
+  const searchDirs = [...config.testDirs, ...config.sourceDirs]
+    .map((dir) => path.resolve(process.cwd(), dir))
+    .filter((dir) => fs.existsSync(dir));
   const testFiles = new Set<string>();
 
   for (const test of failedTests) {
@@ -157,52 +174,52 @@ async function getChatHistory(config: Config): Promise<Message[]> {
     ];
   }
 }
-
-async function streamAIResponse(
-  config: Config,
-  messages: Message[]
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        hostname: "api.deepseek.com",
-        path: "/chat/completions",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-      },
-      (res) => {
-        let response = "";
-        res.on("data", (chunk) => {
-          const chunkStr = chunk.toString();
-          printReasoningContent(chunkStr);
-          response += chunkStr;
-        });
-        res.on("end", () => resolve(response));
-      }
-    );
-
-    req.on("error", reject);
-    req.write(
-      JSON.stringify({
-        model: "deepseek-reasoner",
-        messages,
-        stream: true,
-      })
-    );
-    req.end();
-  });
+function handleErrorChunk(chunk: string, config: Config) {
+  try {
+    const json = JSON.parse(chunk);
+    if (json.error) {
+      console.error("Error:", json.error.message);
+      process.exit(1);
+    }
+  } catch {
+    // it's not an error
+  }
 }
 
-function createBlessedUI() {
+interface BlessedUI {
+  screen: blessed.Widgets.Screen;
+  testResultsLog: blessed.Widgets.Log;
+  reasoningLog: blessed.Widgets.Log;
+}
+
+function createBlessedUI(): BlessedUI {
   const screen = blessed.screen({
     smartCSR: true,
-    title: "DeepSeek Reasoning",
+    title: "DeepSeek Test Analyzer",
   });
 
-  const log = blessed.log({
+  const testResultsLog = blessed.log({
+    parent: screen,
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "50%",
+    border: {
+      type: "line",
+      fg: 12,
+    },
+    label: " Test Results ",
+    scrollback: 1000,
+    scrollbar: {
+      ch: " ",
+      style: {
+        bg: 12,
+      },
+    },
+    mouse: true,
+  });
+
+  const reasoningLog = blessed.log({
     parent: screen,
     top: "50%",
     left: 0,
@@ -210,13 +227,15 @@ function createBlessedUI() {
     height: "50%",
     border: {
       type: "line",
-      fg: "blue",
+      fg: 12,
     },
-    label: " DeepSeek Reasoning ",
+    label: " Reasoning ",
     scrollback: 1000,
     scrollbar: {
       ch: " ",
-      inverse: true,
+      style: {
+        bg: 12,
+      },
     },
     mouse: true,
   });
@@ -226,21 +245,26 @@ function createBlessedUI() {
     process.exit(0);
   });
 
-  return { screen, log };
+  return { screen, testResultsLog, reasoningLog };
 }
 
-const ui = createBlessedUI();
-
-function printReasoningContent(chunkJsonLine = "data: {}") {
+function printReasoningContent(
+  chunkJsonLine = "data: {}",
+  config: Config,
+  ui: BlessedUI
+) {
   try {
     const json = JSON.parse(chunkJsonLine.split(":")[1])[0];
     const newReasoningContent = json.delta.reasoning_content;
     if (newReasoningContent) {
+      if (config.debug) {
+        console.debug("newReasoningContent", newReasoningContent);
+      }
       const cleanContent = newReasoningContent
         .replace(/^\n+/, "") // Remove leading newlines
         .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
         .replace(/\s+$/, ""); // Remove trailing whitespace
-      ui.log.add(cleanContent);
+      ui.reasoningLog.add(cleanContent);
       ui.screen.render();
       return;
     }
@@ -264,7 +288,7 @@ function printReasoningContent(chunkJsonLine = "data: {}") {
         .replace(/^\n+/, "") // Remove leading newlines
         .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
         .replace(/\s+$/, ""); // Remove trailing whitespace
-      ui.log.add(cleanContent);
+      ui.reasoningLog.add(cleanContent);
       ui.screen.render();
     }
   } catch (error: unknown) {
@@ -272,16 +296,67 @@ function printReasoningContent(chunkJsonLine = "data: {}") {
   }
 }
 
+async function streamAIResponse(
+  config: Config,
+  messages: Message[],
+  ui: BlessedUI
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "api.deepseek.com",
+        path: "/chat/completions",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+      },
+      (res) => {
+        let response = "";
+        res.on("data", (chunk) => {
+          const chunkStr = chunk.toString();
+          if (!config.hideReasoning) {
+            printReasoningContent(chunkStr, config, ui);
+          }
+          handleErrorChunk(chunkStr, config);
+          response += chunkStr;
+        });
+        res.on("end", () => resolve(response));
+      }
+    );
+
+    req.on("error", reject);
+    req.write(
+      JSON.stringify({
+        model: "deepseek-reasoner",
+        messages,
+        stream: true,
+      })
+    );
+    req.end();
+  });
+}
+
 async function main() {
   const config = loadConfig();
   if (config.debug) console.debug("Configuration:", config);
 
+  const ui = createBlessedUI();
+
   try {
     const [testOutput, repoStructure, gitDiff] = await Promise.all([
-      runTestCommand(config.testCommand),
-      serializeRepository(config.serializeCommand),
+      runTestCommand(config.testCommand, config),
+      serializeRepository(config.serializeCommand, config),
       executeCommand("git", ["diff"]),
     ]);
+
+    ui.testResultsLog.add(testOutput);
+    ui.screen.render();
+
+    if (config.debug) {
+      console.debug("gitDiff", gitDiff);
+    }
 
     const testFiles = findTestFiles(testOutput, config);
     const testContents = testFiles
@@ -300,7 +375,7 @@ async function main() {
     });
 
     console.log("\nAnalyzing test failures...");
-    const aiResponse = await streamAIResponse(config, messages);
+    const aiResponse = await streamAIResponse(config, messages, ui);
 
     await fs.promises.writeFile(
       config.historyFile,
@@ -310,7 +385,12 @@ async function main() {
         2
       )
     );
+
+    // Destroy the screen after reasoning is done
+    ui.screen.destroy();
+    console.log("\nSolution:", aiResponse);
   } catch (error) {
+    ui.screen.destroy();
     console.error(
       "\nError:",
       error instanceof Error ? error.message : String(error)
