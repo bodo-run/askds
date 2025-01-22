@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { program } from "commander";
 import process from "process";
+const blessed = require("blessed");
 
 interface Config {
   debug: boolean;
@@ -176,7 +177,7 @@ async function streamAIResponse(
         let response = "";
         res.on("data", (chunk) => {
           const chunkStr = chunk.toString();
-          process.stdout.write(chunkStr);
+          printReasoningContent(chunkStr);
           response += chunkStr;
         });
         res.on("end", () => resolve(response));
@@ -193,6 +194,82 @@ async function streamAIResponse(
     );
     req.end();
   });
+}
+
+function createBlessedUI() {
+  const screen = blessed.screen({
+    smartCSR: true,
+    title: "DeepSeek Reasoning",
+  });
+
+  const log = blessed.log({
+    parent: screen,
+    top: "50%",
+    left: 0,
+    width: "100%",
+    height: "50%",
+    border: {
+      type: "line",
+      fg: "blue",
+    },
+    label: " DeepSeek Reasoning ",
+    scrollback: 1000,
+    scrollbar: {
+      ch: " ",
+      inverse: true,
+    },
+    mouse: true,
+  });
+
+  screen.key(["escape", "q", "C-c"], () => {
+    screen.destroy();
+    process.exit(0);
+  });
+
+  return { screen, log };
+}
+
+const ui = createBlessedUI();
+
+function printReasoningContent(chunkJsonLine = "data: {}") {
+  try {
+    const json = JSON.parse(chunkJsonLine.split(":")[1])[0];
+    const newReasoningContent = json.delta.reasoning_content;
+    if (newReasoningContent) {
+      const cleanContent = newReasoningContent
+        .replace(/^\n+/, "") // Remove leading newlines
+        .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
+        .replace(/\s+$/, ""); // Remove trailing whitespace
+      ui.log.add(cleanContent);
+      ui.screen.render();
+      return;
+    }
+  } catch (error: unknown) {
+    // it's not a delta
+  }
+
+  const parts = chunkJsonLine.split("data: ");
+  if (parts.length < 2) {
+    console.debug(`Invalid chunk: ${chunkJsonLine}`);
+    return;
+  }
+
+  try {
+    const json = JSON.parse(parts[1]);
+    const newReasoningContent =
+      json?.choices?.[0]?.delta?.reasoning_content ||
+      json?.delta?.reasoning_content;
+    if (newReasoningContent) {
+      const cleanContent = newReasoningContent
+        .replace(/^\n+/, "") // Remove leading newlines
+        .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
+        .replace(/\s+$/, ""); // Remove trailing whitespace
+      ui.log.add(cleanContent);
+      ui.screen.render();
+    }
+  } catch (error: unknown) {
+    console.debug(`Error parsing JSON: ${error}`);
+  }
 }
 
 async function main() {

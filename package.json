@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "tsc && chmod +x dist/index.js",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
   },
   "keywords": [],
   "author": "",
@@ -13,9 +14,12 @@
   "devDependencies": {
     "@types/node": "^22.10.7",
     "tslib": "^2.8.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@types/blessed": "^0.1.25",
+    "blessed": "^0.1.81",
     "commander": "^13.1.0"
   }
 }

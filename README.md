@@ -1,4 +1,4 @@
-# `askai`
+# `askai` - AI-powered test debugger
 
 AI-powered test debugger that helps diagnose test failures using AI. It runs your tests and provides the results to an AI agent to analyze and suggest solutions.
 
