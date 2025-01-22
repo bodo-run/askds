@@ -119,7 +119,7 @@ async function runTestCommand(
       ui.outputLog.add(`Running test command: ${testCommand}`);
     }
     const output = await executeCommand(cmd, args);
-    return output.replace(/\[(\d+)m/g, "\x1b[$1m").replace(/\[(\?25[hl])/g, "");
+    return output;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -186,6 +186,8 @@ async function getGitDiff(config: Config) {
   return diff;
 }
 
+const filterCursorCodes = (text: string) => text.replace(/\x1B\[\?25[hl]/g, "");
+
 interface BlessedUI {
   screen: blessed.Widgets.Screen;
   grid: contrib.grid;
@@ -250,13 +252,17 @@ function createBlessedUI(): BlessedUI {
   screen.render();
 
   function appendOutputLog(text: string) {
-    ui.outputLog.setContent(ui.outputLog.getContent() + text);
+    ui.outputLog.setContent(
+      ui.outputLog.getContent() + filterCursorCodes(text)
+    );
     ui.outputLog.scrollTo(ui.outputLog.getScrollHeight());
     ui.screen.render();
   }
 
   function appendReasoningLog(text: string) {
-    ui.reasoningLog.setContent(ui.reasoningLog.getContent() + text);
+    ui.reasoningLog.setContent(
+      ui.reasoningLog.getContent() + filterCursorCodes(text)
+    );
     ui.reasoningLog.scrollTo(ui.reasoningLog.getScrollHeight());
     ui.screen.render();
   }
@@ -356,9 +362,7 @@ async function main() {
       },
     ];
 
-    ui.outputLog.add("Analyzing test failures...");
-    ui.screen.render();
-
+    ui.appendReasoningLog("Analyzing test failures...\n");
     const aiResponses = await streamAIResponse(config, messages);
 
     ui.screen.destroy();

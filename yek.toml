@@ -1,6 +1,5 @@
 
 ignore_patterns = [
-  "^repo-serialized/",
   "^node_modules/.*",
-  "^askai.yaml$",
+  "^yek.yaml$",
 ]
