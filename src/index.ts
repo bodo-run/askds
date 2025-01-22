@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "child_process";
+import { execSync, spawn } from "child_process";
 import https from "https";
 import fs from "fs";
 import path from "path";
@@ -111,7 +111,7 @@ async function runTestCommand(
   const [cmd, ...args] = testCommand.split(/\s+/);
   try {
     if (config.debug) {
-      ui.outputScreen.log(`Running test command: ${testCommand}`);
+      ui.outputScreen.setContent(`Running test command: ${testCommand}`);
     }
     return await executeCommand(cmd, args);
   } catch (error) {
@@ -126,7 +126,7 @@ async function serializeRepository(
   const [cmd, ...args] = command.split(/\s+/);
   const result = await executeCommand(cmd, args);
   if (config.debug) {
-    ui.outputScreen.log(`Serialized repository size: ${result.length}`);
+    ui.outputScreen.setContent(`Serialized repository size: ${result.length}`);
   }
   return result;
 }
@@ -159,7 +159,7 @@ function findTestFiles(output: string, config: Config): string[] {
           }
         });
       } catch (error) {
-        ui.outputScreen.log(`Error searching ${dir}: ${error}`);
+        ui.outputScreen.setContent(`Error searching ${dir}: ${error}`);
       }
     }
   }
@@ -198,8 +198,8 @@ function handleErrorChunk(chunk: string, config: Config) {
 
 interface BlessedUI {
   screen: blessed.Widgets.Screen;
-  outputScreen: blessed.Widgets.Log;
-  reasoningLog: blessed.Widgets.Log;
+  outputScreen: blessed.Widgets.BoxElement;
+  reasoningLog: blessed.Widgets.BoxElement;
 }
 
 function createBlessedUI(): BlessedUI {
@@ -208,52 +208,44 @@ function createBlessedUI(): BlessedUI {
     title: "DeepSeek Test Analyzer",
   });
 
-  const testResultsLog = blessed.log({
+  const testResultsLog = blessed.box({
     parent: screen,
     top: 0,
     left: 0,
     width: "100%",
     height: "50%",
+    content: "",
     border: {
       type: "line",
-      fg: 12,
     },
     label: " Test Results ",
-    scrollback: 1000,
-    scrollbar: {
-      ch: " ",
-      style: {
-        bg: 12,
-      },
-    },
     mouse: true,
+    scrollable: true,
+    alwaysScroll: true,
   });
 
-  const reasoningLog = blessed.log({
+  const reasoningLog = blessed.box({
     parent: screen,
     top: "50%",
     left: 0,
     width: "100%",
     height: "50%",
+    content: "",
     border: {
       type: "line",
-      fg: 12,
     },
     label: " Reasoning ",
-    scrollback: 1000,
-    scrollbar: {
-      ch: " ",
-      style: {
-        bg: 12,
-      },
-    },
     mouse: true,
+    scrollable: true,
+    alwaysScroll: true,
   });
 
   screen.key(["escape", "q", "C-c"], () => {
     screen.destroy();
     process.exit(0);
   });
+
+  screen.render();
 
   return { screen, outputScreen: testResultsLog, reasoningLog };
 }
@@ -346,15 +338,32 @@ async function streamAIResponse(
   });
 }
 
+async function getGitDiff(config: Config) {
+  const diff = execSync("git diff | cat", { stdio: "pipe" }).toString();
+  if (diff.includes("No such file or directory")) {
+    return "";
+  }
+  if (config.debug) {
+    const currentContent = ui.outputScreen.getContent();
+    ui.outputScreen.setContent(`${currentContent}\nGit Diff:\n${diff}`);
+    ui.screen.render();
+  }
+  return diff;
+}
+
 async function main() {
   const config = loadConfig();
-  if (config.debug) ui.screen.log(`Configuration: ${JSON.stringify(config)}`);
+  if (config.debug) {
+    const debugContent = `Configuration: ${JSON.stringify(config)}`;
+    ui.outputScreen.setContent(debugContent);
+    ui.screen.render();
+  }
 
   try {
     const [testOutput, repoStructure, gitDiff] = await Promise.all([
       runTestCommand(config.testCommand, config),
       serializeRepository(config.serializeCommand, config),
-      executeCommand("git --no-pager diff", [], { shell: true }),
+      getGitDiff(config),
     ]);
 
     ui.outputScreen.setContent(
@@ -363,7 +372,9 @@ async function main() {
     ui.screen.render();
 
     if (config.debug) {
-      console.debug("gitDiff", gitDiff);
+      const currentContent = ui.outputScreen.getContent();
+      ui.outputScreen.setContent(`${currentContent}\ngitDiff: ${gitDiff}`);
+      ui.screen.render();
     }
 
     const testFiles = findTestFiles(testOutput, config);
@@ -382,7 +393,9 @@ async function main() {
       ].join("\n\n"),
     });
 
-    ui.outputScreen.log("\nAnalyzing test failures...");
+    const currentContent = ui.outputScreen.getContent();
+    ui.outputScreen.setContent(`${currentContent}\nAnalyzing test failures...`);
+    ui.screen.render();
 
     const aiResponse = await streamAIResponse(config, messages);
 
@@ -395,7 +408,6 @@ async function main() {
       )
     );
 
-    // Destroy the screen after reasoning is done
     ui.outputScreen.destroy();
     ui.reasoningLog.destroy();
     ui.screen.destroy();
@@ -404,6 +416,7 @@ async function main() {
     ui.outputScreen.destroy();
     ui.reasoningLog.destroy();
     ui.screen.destroy();
+    console.error("Error:", error);
   }
 }
 
