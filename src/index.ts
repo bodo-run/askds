@@ -45,6 +45,8 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey" | "testCommand"> = {
   hideReasoning: false,
 };
 
+const ui = createBlessedUI();
+
 function loadConfig(): Config {
   program
     .version("1.0.0")
@@ -77,10 +79,18 @@ function loadConfig(): Config {
 
 async function executeCommand(
   command: string,
-  args: string[]
+  args: string[],
+  options: {
+    shell: boolean;
+  } = {
+    shell: true,
+  }
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, { shell: true });
+    const proc = spawn(command, args, {
+      shell: options.shell,
+      stdio: "pipe",
+    });
     let output = "";
 
     proc.stdout.on("data", (data) => (output += data.toString()));
@@ -101,7 +111,7 @@ async function runTestCommand(
   const [cmd, ...args] = testCommand.split(/\s+/);
   try {
     if (config.debug) {
-      console.debug("Running test command:", testCommand);
+      ui.outputScreen.log(`Running test command: ${testCommand}`);
     }
     return await executeCommand(cmd, args);
   } catch (error) {
@@ -116,7 +126,7 @@ async function serializeRepository(
   const [cmd, ...args] = command.split(/\s+/);
   const result = await executeCommand(cmd, args);
   if (config.debug) {
-    console.debug("Serialized repository size:", result.length);
+    ui.outputScreen.log(`Serialized repository size: ${result.length}`);
   }
   return result;
 }
@@ -149,7 +159,7 @@ function findTestFiles(output: string, config: Config): string[] {
           }
         });
       } catch (error) {
-        if (config.debug) console.error(`Error searching ${dir}: ${error}`);
+        ui.outputScreen.log(`Error searching ${dir}: ${error}`);
       }
     }
   }
@@ -188,7 +198,7 @@ function handleErrorChunk(chunk: string, config: Config) {
 
 interface BlessedUI {
   screen: blessed.Widgets.Screen;
-  testResultsLog: blessed.Widgets.Log;
+  outputScreen: blessed.Widgets.Log;
   reasoningLog: blessed.Widgets.Log;
 }
 
@@ -245,14 +255,10 @@ function createBlessedUI(): BlessedUI {
     process.exit(0);
   });
 
-  return { screen, testResultsLog, reasoningLog };
+  return { screen, outputScreen: testResultsLog, reasoningLog };
 }
 
-function printReasoningContent(
-  chunkJsonLine = "data: {}",
-  config: Config,
-  ui: BlessedUI
-) {
+function printReasoningContent(chunkJsonLine = "data: {}", config: Config) {
   try {
     const json = JSON.parse(chunkJsonLine.split(":")[1])[0];
     const newReasoningContent = json.delta.reasoning_content;
@@ -264,7 +270,9 @@ function printReasoningContent(
         .replace(/^\n+/, "") // Remove leading newlines
         .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
         .replace(/\s+$/, ""); // Remove trailing whitespace
-      ui.reasoningLog.add(cleanContent);
+
+      const currentContent = ui.reasoningLog.getContent();
+      ui.reasoningLog.setContent(currentContent + cleanContent);
       ui.screen.render();
       return;
     }
@@ -288,7 +296,8 @@ function printReasoningContent(
         .replace(/^\n+/, "") // Remove leading newlines
         .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
         .replace(/\s+$/, ""); // Remove trailing whitespace
-      ui.reasoningLog.add(cleanContent);
+      const currentContent = ui.reasoningLog.getContent();
+      ui.reasoningLog.setContent(currentContent + cleanContent);
       ui.screen.render();
     }
   } catch (error: unknown) {
@@ -298,8 +307,7 @@ function printReasoningContent(
 
 async function streamAIResponse(
   config: Config,
-  messages: Message[],
-  ui: BlessedUI
+  messages: Message[]
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -317,7 +325,7 @@ async function streamAIResponse(
         res.on("data", (chunk) => {
           const chunkStr = chunk.toString();
           if (!config.hideReasoning) {
-            printReasoningContent(chunkStr, config, ui);
+            printReasoningContent(chunkStr, config);
           }
           handleErrorChunk(chunkStr, config);
           response += chunkStr;
@@ -340,18 +348,18 @@ async function streamAIResponse(
 
 async function main() {
   const config = loadConfig();
-  if (config.debug) console.debug("Configuration:", config);
-
-  const ui = createBlessedUI();
+  if (config.debug) ui.screen.log(`Configuration: ${JSON.stringify(config)}`);
 
   try {
     const [testOutput, repoStructure, gitDiff] = await Promise.all([
       runTestCommand(config.testCommand, config),
       serializeRepository(config.serializeCommand, config),
-      executeCommand("git", ["diff"]),
+      executeCommand("git --no-pager diff", [], { shell: true }),
     ]);
 
-    ui.testResultsLog.add(testOutput);
+    ui.outputScreen.setContent(
+      [testOutput, repoStructure, gitDiff].join("\n\n")
+    );
     ui.screen.render();
 
     if (config.debug) {
@@ -374,8 +382,9 @@ async function main() {
       ].join("\n\n"),
     });
 
-    console.log("\nAnalyzing test failures...");
-    const aiResponse = await streamAIResponse(config, messages, ui);
+    ui.outputScreen.log("\nAnalyzing test failures...");
+
+    const aiResponse = await streamAIResponse(config, messages);
 
     await fs.promises.writeFile(
       config.historyFile,
@@ -387,16 +396,15 @@ async function main() {
     );
 
     // Destroy the screen after reasoning is done
+    ui.outputScreen.destroy();
+    ui.reasoningLog.destroy();
     ui.screen.destroy();
-    console.log("\nSolution:", aiResponse);
+    console.log(aiResponse);
   } catch (error) {
+    ui.outputScreen.destroy();
+    ui.reasoningLog.destroy();
     ui.screen.destroy();
-    console.error(
-      "\nError:",
-      error instanceof Error ? error.message : String(error)
-    );
-    process.exit(1);
   }
 }
 
-main();
+main().catch(console.error);
