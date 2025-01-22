@@ -4,13 +4,17 @@
 
 For repo serialization, it uses [`yek`](https://github.com/bodo-run/yek) to serialize the repository.
 
-
-
 [Screencast](https://github.com/user-attachments/assets/477e92e2-6701-4138-8ffb-c910ef61571e)
 
-
-
 ## Installation
+
+Make sure you have [`yek`](https://github.com/bodo-run/yek) installed.
+
+```bash
+curl -fsSL https://bodo.run/yek.sh | bash
+```
+
+Then install `askds`:
 
 ```bash
 npm install -g askds
