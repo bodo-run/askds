@@ -76,6 +76,14 @@ function loadConfig(): Config {
   };
 }
 
+// Add ANSI sanitization function
+function sanitizeAnsi(text: string): string {
+  return text
+    .replace(/\x1B\[\?25[hl]/g, "") // Remove cursor visibility codes
+    .replace(/\x1B\]8;;.*?\x07/g, "") // Remove hyperlink sequences
+    .replace(/\x1B\[\?[0-9;]*[hl]/g, ""); // Remove other cursor control codes
+}
+
 async function executeCommand(
   command: string,
   args: string[],
@@ -88,16 +96,22 @@ async function executeCommand(
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
       shell: options.shell,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, FORCE_COLOR: "1" },
+      stdio: ["inherit", "pipe", "pipe"], // Preserve stdout configuration
+      env: { ...process.env, FORCE_COLOR: "1" }, // Force color output
     });
+
     let output = "";
+    proc.stdout.on("data", (data) => {
+      const text = sanitizeAnsi(data.toString());
+      output += text;
+      ui.outputLog.log(text); // Add directly to log with ANSI parsing
+    });
 
-    proc.stdout.setEncoding("utf8");
-    proc.stderr.setEncoding("utf8");
-
-    proc.stdout.on("data", (data) => (output += data));
-    proc.stderr.on("data", (data) => (output += data));
+    proc.stderr.on("data", (data) => {
+      const text = sanitizeAnsi(data.toString());
+      output += text;
+      ui.outputLog.log(text); // Add directly to log with ANSI parsing
+    });
 
     proc.on("close", (code) => {
       code === 0
@@ -195,9 +209,15 @@ function createBlessedUI(): BlessedUI {
   const screen = blessed.screen({
     smartCSR: true,
     title: "DeepSeek Test Analyzer",
+    fullUnicode: true,
+    terminal: "xterm-256color", // Explicit terminal type
   });
 
-  const grid = new contrib.grid({ rows: 2, cols: 1, screen });
+  const grid = new contrib.grid({
+    rows: 2,
+    cols: 1,
+    screen,
+  });
 
   const outputLog = grid.set(0, 0, 1, 1, contrib.log, {
     label: " Test Results ",
@@ -208,6 +228,11 @@ function createBlessedUI(): BlessedUI {
     keys: true,
     ansi: true,
     scrollbar: true,
+    style: {
+      fg: "white",
+      bg: "black",
+      border: { fg: "cyan" },
+    },
   });
 
   const reasoningLog = grid.set(1, 0, 1, 1, contrib.log, {
@@ -219,6 +244,11 @@ function createBlessedUI(): BlessedUI {
     keys: true,
     ansi: true,
     scrollbar: true,
+    style: {
+      fg: "white",
+      bg: "black",
+      border: { fg: "cyan" },
+    },
   });
 
   screen.key(["escape", "q", "C-c"], () => {
@@ -233,7 +263,9 @@ function createBlessedUI(): BlessedUI {
 
 function debug(...messages: string[]) {
   messages.forEach((msg) =>
-    msg.split("\n").forEach((line) => ui.outputLog.add(line))
+    sanitizeAnsi(msg)
+      .split("\n")
+      .forEach((line) => ui.outputLog.log(line))
   );
   ui.screen.render();
   fs.appendFileSync("log.txt", messages.join("\n"));
