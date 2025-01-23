@@ -205,76 +205,81 @@ interface BlessedUI {
 
 function createBlessedUI(): BlessedUI {
   let initialized = false;
-  let screen: blessed.Widgets.Screen;
-  let grid: contrib.grid;
-  let outputLog: contrib.Widgets.LogElement;
-  let reasoningLog: contrib.Widgets.LogElement;
+  let screen: blessed.Widgets.Screen | undefined;
+  let grid: contrib.grid | undefined;
+  let outputLog: contrib.Widgets.LogElement | undefined;
+  let reasoningLog: contrib.Widgets.LogElement | undefined;
+
   function initialize() {
     if (initialized) return;
-    initialized = true;
-    screen = blessed.screen({
-      smartCSR: true,
-      title: "DeepSeek Test Analyzer",
-      fullUnicode: true,
-      terminal: "xterm-256color", // Explicit terminal type
-    });
 
-    grid = new contrib.grid({
-      rows: 2,
-      cols: 1,
-      screen,
-    });
+    // Check if we're in a TTY environment
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      return;
+    }
 
-    outputLog = grid.set(0, 0, 1, 1, contrib.log, {
-      label: " Test Results ",
-      bufferLength: 1000,
-      scrollable: true,
-      input: true,
-      mouse: true,
-      keys: true,
-      ansi: true,
-      scrollbar: true,
-      style: {
-        fg: "inherit",
-        bg: "inherit",
-        border: { fg: "cyan" },
-      },
-    });
+    try {
+      initialized = true;
+      screen = blessed.screen({
+        smartCSR: true,
+        title: "DeepSeek Test Analyzer",
+        fullUnicode: true,
+        terminal: "xterm-256color",
+      });
 
-    reasoningLog = grid.set(1, 0, 1, 1, contrib.log, {
-      label: " Reasoning ",
-      bufferLength: 1000,
-      scrollable: true,
-      input: true,
-      mouse: true,
-      keys: true,
-      ansi: true,
-      scrollbar: true,
-      style: {
-        text: "gray",
-        bg: "inherit",
-        fg: "inherit",
-        border: { fg: "green" },
-      },
-    });
+      grid = new contrib.grid({
+        rows: 2,
+        cols: 1,
+        screen,
+      });
 
-    screen.key(["escape", "q", "C-c"], () => {
-      screen.destroy();
-      process.exit(0);
-    });
+      outputLog = grid.set(0, 0, 1, 1, contrib.log, {
+        label: " Test Results ",
+        bufferLength: 1000,
+        scrollable: true,
+        input: true,
+        mouse: true,
+        keys: true,
+        ansi: true,
+        scrollbar: true,
+        style: {
+          fg: "inherit",
+          bg: "inherit",
+          border: { fg: "cyan" },
+        },
+      });
 
-    return {
-      initialize,
-      screen,
-      grid,
-      outputLog,
-      reasoningLog,
-    };
+      reasoningLog = grid.set(1, 0, 1, 1, contrib.log, {
+        label: " Reasoning ",
+        bufferLength: 1000,
+        scrollable: true,
+        input: true,
+        mouse: true,
+        keys: true,
+        ansi: true,
+        scrollbar: true,
+        style: {
+          text: "gray",
+          bg: "inherit",
+          fg: "inherit",
+          border: { fg: "green" },
+        },
+      });
+
+      screen.key(["escape", "q", "C-c"], () => {
+        destroy();
+        process.exit(0);
+      });
+    } catch (error) {
+      initialized = false;
+      console.error("Failed to initialize UI:", error);
+    }
   }
 
   function appendOutputLog(text: string) {
     try {
-      if (!initialized) {
+      if (!initialized || !outputLog) {
+        console.log("[OUTPUT]", text);
         return;
       }
       outputLog.setContent(outputLog.getContent() + filterCursorCodes(text));
@@ -282,13 +287,14 @@ function createBlessedUI(): BlessedUI {
       render();
     } catch (e) {
       console.error("UI Error:", e);
-      process.exit(1);
+      console.log("[OUTPUT]", text);
     }
   }
 
   function appendReasoningLog(text: string) {
     try {
-      if (!initialized) {
+      if (!initialized || !reasoningLog) {
+        console.log("[REASONING]", text);
         return;
       }
       reasoningLog.setContent(
@@ -298,23 +304,26 @@ function createBlessedUI(): BlessedUI {
       render();
     } catch (e) {
       console.error("UI Error:", e);
-      process.exit(1);
+      console.log("[REASONING]", text);
     }
   }
 
   function render() {
-    if (!initialized) {
+    if (!initialized || !screen) {
       return;
     }
-
     screen.render();
   }
 
   function destroy() {
-    if (!initialized) {
-      return;
+    if (initialized && screen) {
+      try {
+        screen.destroy();
+      } catch (error) {
+        console.error("Error cleaning up UI:", error);
+      }
+      initialized = false;
     }
-    screen.destroy();
   }
 
   return {
@@ -372,8 +381,16 @@ async function main() {
     process.exit(0);
   });
 
+  // Initialize UI only if:
+  // 1. Reasoning is not hidden
+  // 2. We're in a TTY environment
   if (!config.hideReasoning) {
     ui.initialize();
+
+    // If we're not in a TTY environment, force hide reasoning
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      config.hideReasoning = true;
+    }
   }
 
   if (config.debug) {
