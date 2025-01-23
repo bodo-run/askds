@@ -142,10 +142,15 @@ async function serializeRepository(
 }
 
 function findTestFiles(output: string, config: Config): string[] {
+  if (!output) {
+    ui.appendOutputLog("No test output detected");
+    return [];
+  }
+
   const failedTests = new Set(
     output
       .split("\n")
-      .filter((line) => line.toLowerCase().includes("fail"))
+      .filter((line) => /(fail|error|❌|×)/i.test(line))
       .map((line) => line.match(/\b(test\w*)\b/)?.[1])
       .filter(Boolean) as string[]
   );
@@ -268,23 +273,33 @@ function createBlessedUI(): BlessedUI {
   }
 
   function appendOutputLog(text: string) {
-    if (!initialized) {
-      return;
+    try {
+      if (!initialized) {
+        return;
+      }
+      outputLog.setContent(outputLog.getContent() + filterCursorCodes(text));
+      outputLog.scrollTo(outputLog.getScrollHeight());
+      render();
+    } catch (e) {
+      console.error("UI Error:", e);
+      process.exit(1);
     }
-    outputLog.setContent(outputLog.getContent() + filterCursorCodes(text));
-    outputLog.scrollTo(outputLog.getScrollHeight());
-    render();
   }
 
   function appendReasoningLog(text: string) {
-    if (!initialized) {
-      return;
+    try {
+      if (!initialized) {
+        return;
+      }
+      reasoningLog.setContent(
+        reasoningLog.getContent() + filterCursorCodes(text)
+      );
+      reasoningLog.scrollTo(reasoningLog.getScrollHeight());
+      render();
+    } catch (e) {
+      console.error("UI Error:", e);
+      process.exit(1);
     }
-    reasoningLog.setContent(
-      reasoningLog.getContent() + filterCursorCodes(text)
-    );
-    reasoningLog.scrollTo(reasoningLog.getScrollHeight());
-    render();
   }
 
   function render() {
@@ -351,6 +366,11 @@ async function streamAIResponse(
 
 async function main() {
   const config = loadConfig();
+
+  process.on("SIGINT", () => {
+    ui.destroy();
+    process.exit(0);
+  });
 
   if (!config.hideReasoning) {
     ui.initialize();
