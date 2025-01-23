@@ -32,6 +32,7 @@
     "blessed": "^0.1.81",
     "blessed-contrib": "^4.8.20",
     "commander": "^13.1.0",
+    "fast-glob": "^3.3.3",
     "openai": "^4.79.4"
   }
 }

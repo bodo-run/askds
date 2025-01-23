@@ -7,6 +7,7 @@ import process from "process";
 import blessed from "blessed";
 import contrib from "blessed-contrib";
 import OpenAI from "openai";
+import fastGlob from "fast-glob";
 
 interface Config {
   debug: boolean;
@@ -18,6 +19,8 @@ interface Config {
   testFileExt: string;
   systemPromptFile?: string;
   hideReasoning: boolean;
+  testFilePattern?: string;
+  sourceFilePattern?: string;
 }
 
 interface Message {
@@ -48,35 +51,44 @@ const ui = createBlessedUI();
 
 function loadConfig(): Config {
   program
-    .version("1.0.0")
     .option("--debug", "Enable debug mode")
-    .option("--serialize <command>", "Repository serialization command")
-    .option("--system-prompt <file>", "Path to system prompt file")
-    .option(
-      "--hide-reasoning",
-      "Hide reasoning UI. Enable if you want to pipe the output to another command"
-    )
-    .arguments("[testCommand...]")
-    .action((testCommand) => {
-      program.opts().testCommand = testCommand.join(" ");
-    })
-    .parse(process.argv);
+    .option("--serialize <command>", "Command to serialize repository")
+    .option("--test-dirs <dirs>", "Test directories")
+    .option("--source-dirs <dirs>", "Source directories")
+    .option("--test-file-ext <ext>", "Test file extension")
+    .option("--system-prompt <file>", "System prompt file")
+    .option("--hide-reasoning", "Hide AI reasoning")
+    .option("--test-file-pattern <pattern>", "Glob pattern for test files")
+    .option("--source-file-pattern <pattern>", "Glob pattern for source files");
+
+  program.parse();
+
+  const options = program.opts();
+  const testCommand = program.args.join(" ");
+
+  if (!testCommand) {
+    console.error("No test command provided");
+    process.exit(1);
+  }
 
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    console.error("Error: DEEPSEEK_API_KEY environment variable is required");
+    console.error("DEEPSEEK_API_KEY environment variable not set");
     process.exit(1);
   }
 
   return {
-    ...DEFAULT_CONFIG,
+    debug: options.debug ?? DEFAULT_CONFIG.debug,
+    testCommand,
+    serializeCommand: options.serialize ?? DEFAULT_CONFIG.serializeCommand,
     apiKey,
-    debug: program.opts().debug || false,
-    serializeCommand:
-      program.opts().serialize || DEFAULT_CONFIG.serializeCommand,
-    testCommand: program.opts().testCommand,
-    hideReasoning: program.opts().hideReasoning || false,
-    systemPromptFile: program.opts().systemPrompt,
+    testDirs: options.testDirs?.split(",") ?? DEFAULT_CONFIG.testDirs,
+    sourceDirs: options.sourceDirs?.split(",") ?? DEFAULT_CONFIG.sourceDirs,
+    testFileExt: options.testFileExt ?? DEFAULT_CONFIG.testFileExt,
+    systemPromptFile: options.systemPrompt ?? DEFAULT_CONFIG.systemPromptFile,
+    hideReasoning: options.hideReasoning ?? DEFAULT_CONFIG.hideReasoning,
+    testFilePattern: options.testFilePattern,
+    sourceFilePattern: options.sourceFilePattern,
   };
 }
 
@@ -155,22 +167,27 @@ function findTestFiles(output: string, config: Config): string[] {
       .filter(Boolean) as string[]
   );
 
-  const searchDirs = [...config.testDirs, ...config.sourceDirs]
-    .map((dir) => path.resolve(process.cwd(), dir))
-    .filter((dir) => fs.existsSync(dir));
-  const testFiles = new Set<string>();
+  let testFiles: string[] = [];
 
-  for (const test of failedTests) {
+  if (config.testFilePattern) {
+    testFiles = fastGlob.sync(config.testFilePattern, {
+      absolute: true,
+      cwd: process.cwd(),
+    });
+    if (config.debug) {
+      ui.appendOutputLog(`Found test files via glob: ${testFiles.join(", ")}`);
+    }
+  } else {
+    const searchDirs = [...config.testDirs, ...config.sourceDirs]
+      .map((dir) => path.resolve(process.cwd(), dir))
+      .filter((dir) => fs.existsSync(dir));
+
     for (const dir of searchDirs) {
       try {
         const files = fs.readdirSync(dir, { recursive: true });
         files.forEach((file) => {
-          if (
-            typeof file === "string" &&
-            file.endsWith(config.testFileExt) &&
-            fs.readFileSync(path.join(dir, file), "utf8").includes(test)
-          ) {
-            testFiles.add(path.join(dir, file));
+          if (typeof file === "string" && file.endsWith(config.testFileExt)) {
+            testFiles.push(path.join(dir, file));
           }
         });
       } catch (error) {
@@ -179,7 +196,17 @@ function findTestFiles(output: string, config: Config): string[] {
     }
   }
 
-  return Array.from(testFiles);
+  const matchingFiles = testFiles.filter((file) => {
+    try {
+      const content = fs.readFileSync(file, "utf8");
+      return Array.from(failedTests).some((test) => content.includes(test));
+    } catch (error) {
+      ui.appendOutputLog(`Error reading ${file}: ${error}`);
+      return false;
+    }
+  });
+
+  return matchingFiles;
 }
 
 async function getGitDiff(config: Config) {

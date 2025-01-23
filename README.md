@@ -2,13 +2,13 @@
 
 `askds` is a test debugger that helps diagnose test failures using DeepSeek R1. It runs your tests and provides the results to an AI agent to analyze and suggest solutions.
 
-For repo serialization, it uses [`yek`](https://github.com/bodo-run/yek) to serialize the repository.
+For repository serialization, it uses [`yek`](https://github.com/bodo-run/yek) to serialize the repository.
 
 [Screencast](https://github.com/user-attachments/assets/477e92e2-6701-4138-8ffb-c910ef61571e)
 
 ## Installation
 
-Make sure you have [`yek`](https://github.com/bodo-run/yek) installed.
+Make sure you have [`yek`](https://github.com/bodo-run/yek) installed:
 
 ```bash
 curl -fsSL https://bodo.run/yek.sh | bash
@@ -41,33 +41,33 @@ Set these environment variables to customize behavior:
 
 ### Serialization
 
-See [`yek`](https://github.com/bodo-run/yek) for more information on serialization. You can run any command that outputs a string to the console for `--serialize`.
+See [`yek`](https://github.com/bodo-run/yek) for more information on serialization. You can run any command that outputs a string to the console using `--serialize`.
 
 ```bash
 askds --serialize="yek src/" npm test
 ```
 
-### Asking any question
+### Asking Questions
 
-Since we're running the command you provided to us to get the test results, you can run any arbitrary command to feed that to the AI agent.
+Since we run the command you provide to get test results, you can execute any arbitrary command to feed input to the AI agent.
 
 ```bash
 askds --serialize="yek src/" echo "Review my changes"
 ```
 
-### Writing your own prompts
+### Writing Custom Prompts
 
 ```bash
 askds --system-prompt="./prompts/fix-test.txt" cargo test
 ```
 
-### Hide reasoning
+### Hide Reasoning
 
 ```bash
 askds --hide-reasoning cargo test
 ```
 
-### Debug mode
+### Debug Mode
 
 ```bash
 askds --debug npm test
