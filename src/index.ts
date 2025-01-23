@@ -14,13 +14,10 @@ interface Config {
   testCommand: string;
   serializeCommand: string;
   apiKey: string;
-  testDirs: string[];
-  sourceDirs: string[];
-  testFileExt: string;
   systemPromptFile?: string;
   hideReasoning: boolean;
-  testFilePattern?: string;
-  sourceFilePattern?: string;
+  testFilePattern: string;
+  sourceFilePattern: string;
 }
 
 interface Message {
@@ -40,11 +37,10 @@ const DEFAULT_PROMPT = [
 const DEFAULT_CONFIG: Omit<Config, "apiKey" | "testCommand"> = {
   debug: false,
   serializeCommand: "yek",
-  testDirs: ["test", "tests"],
-  sourceDirs: ["src"],
-  testFileExt: ".ts",
   systemPromptFile: "",
   hideReasoning: false,
+  testFilePattern: "**/*.test.*",
+  sourceFilePattern: "!**/*.test.*",
 };
 
 const ui = createBlessedUI();
@@ -53,13 +49,18 @@ function loadConfig(): Config {
   program
     .option("--debug", "Enable debug mode")
     .option("--serialize <command>", "Command to serialize repository")
-    .option("--test-dirs <dirs>", "Test directories")
-    .option("--source-dirs <dirs>", "Source directories")
-    .option("--test-file-ext <ext>", "Test file extension")
     .option("--system-prompt <file>", "System prompt file")
     .option("--hide-reasoning", "Hide AI reasoning")
-    .option("--test-file-pattern <pattern>", "Glob pattern for test files")
-    .option("--source-file-pattern <pattern>", "Glob pattern for source files");
+    .option(
+      "--test-file-pattern <pattern>",
+      "Glob pattern for test files",
+      DEFAULT_CONFIG.testFilePattern
+    )
+    .option(
+      "--source-file-pattern <pattern>",
+      "Glob pattern for source files",
+      DEFAULT_CONFIG.sourceFilePattern
+    );
 
   program.parse();
 
@@ -82,13 +83,11 @@ function loadConfig(): Config {
     testCommand,
     serializeCommand: options.serialize ?? DEFAULT_CONFIG.serializeCommand,
     apiKey,
-    testDirs: options.testDirs?.split(",") ?? DEFAULT_CONFIG.testDirs,
-    sourceDirs: options.sourceDirs?.split(",") ?? DEFAULT_CONFIG.sourceDirs,
-    testFileExt: options.testFileExt ?? DEFAULT_CONFIG.testFileExt,
     systemPromptFile: options.systemPrompt ?? DEFAULT_CONFIG.systemPromptFile,
     hideReasoning: options.hideReasoning ?? DEFAULT_CONFIG.hideReasoning,
-    testFilePattern: options.testFilePattern,
-    sourceFilePattern: options.sourceFilePattern,
+    testFilePattern: options.testFilePattern ?? DEFAULT_CONFIG.testFilePattern,
+    sourceFilePattern:
+      options.sourceFilePattern ?? DEFAULT_CONFIG.sourceFilePattern,
   };
 }
 
@@ -167,33 +166,13 @@ function findTestFiles(output: string, config: Config): string[] {
       .filter(Boolean) as string[]
   );
 
-  let testFiles: string[] = [];
+  const testFiles = fastGlob.sync(config.testFilePattern, {
+    absolute: true,
+    cwd: process.cwd(),
+  });
 
-  if (config.testFilePattern) {
-    testFiles = fastGlob.sync(config.testFilePattern, {
-      absolute: true,
-      cwd: process.cwd(),
-    });
-    if (config.debug) {
-      ui.appendOutputLog(`Found test files via glob: ${testFiles.join(", ")}`);
-    }
-  } else {
-    const searchDirs = [...config.testDirs, ...config.sourceDirs]
-      .map((dir) => path.resolve(process.cwd(), dir))
-      .filter((dir) => fs.existsSync(dir));
-
-    for (const dir of searchDirs) {
-      try {
-        const files = fs.readdirSync(dir, { recursive: true });
-        files.forEach((file) => {
-          if (typeof file === "string" && file.endsWith(config.testFileExt)) {
-            testFiles.push(path.join(dir, file));
-          }
-        });
-      } catch (error) {
-        ui.appendOutputLog(`Error searching ${dir}: ${error}`);
-      }
-    }
+  if (config.debug) {
+    ui.appendOutputLog(`Found test files via glob: ${testFiles.join(", ")}`);
   }
 
   const matchingFiles = testFiles.filter((file) => {

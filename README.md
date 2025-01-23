@@ -37,6 +37,17 @@ Set these environment variables to customize behavior:
 | ------------------ | ---------------- | ------- |
 | `DEEPSEEK_API_KEY` | Required API key | -       |
 
+Command line options:
+
+| Flag                    | Description                   | Default        |
+| ----------------------- | ----------------------------- | -------------- |
+| `--test-file-pattern`   | Glob pattern for test files   | `**/*.test.ts` |
+| `--source-file-pattern` | Glob pattern for source files | `src/**/*.ts`  |
+| `--serialize`           | Repository serialization cmd  | `yek`          |
+| `--debug`               | Enable debug mode             | `false`        |
+| `--hide-reasoning`      | Hide AI reasoning             | `false`        |
+| `--system-prompt`       | Custom system prompt file     | -              |
+
 ## Examples
 
 ### Serialization
