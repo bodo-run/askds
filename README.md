@@ -28,6 +28,8 @@ askds --fix npm test
 
 ## Fix Options
 
+> Note: `--fix` is not yet implemented yet. Work in progress...
+
 - `--fix`: Enable automatic fixing. You will need a Fireworks AI API key.
 - `--interactive`: Confirm each change before applying, only works with `--fix`
 

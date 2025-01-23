@@ -202,35 +202,3 @@ interface RunTestAndFixParams {
   repoStructure: string;
   gitDiff: string;
 }
-
-export async function runTestAndFix({
-  config,
-  testOutput,
-  repoStructure,
-  gitDiff,
-}: RunTestAndFixParams) {
-  // Get AI analysis
-  const analysis = await analyzeTestFailure(
-    config,
-    testOutput,
-    repoStructure,
-    gitDiff
-  );
-
-  // If fix requested, apply changes
-  if (config.fix) {
-    const fixConfig = {
-      ...config,
-      testOutput,
-      repoStructure,
-    };
-
-    const success = await applyAiFixes(fixConfig, {
-      interactive: config.interactive,
-    });
-
-    process.exit(success ? 0 : 1);
-  } else {
-    process.stdout.write(analysis);
-  }
-}
