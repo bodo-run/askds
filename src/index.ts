@@ -452,9 +452,14 @@ async function main() {
     const aiResponses = await streamAIResponse(config, messages);
 
     ui.destroy();
-    console.log(aiResponses);
+    // Reset terminal formatting and clear any lingering UI state
+    process.stdout.write("\x1B[0m\x1Bc");
+    // Force synchronous output and ensure it's flushed
+    process.stdout.write(`${aiResponses}\n`);
   } catch (error) {
     ui.destroy();
+    // Reset terminal formatting and clear any lingering UI state
+    process.stdout.write("\x1B[0m\x1Bc");
     console.error("Error:", error);
   }
 }
