@@ -29,6 +29,13 @@ export DEEPSEEK_API_KEY="your-api-key"
 askds npm test
 ```
 
+For commands with arguments:
+
+```bash
+askds npm test -- --watch
+askds cargo test --features special
+```
+
 ## Configuration
 
 Set these environment variables to customize behavior:

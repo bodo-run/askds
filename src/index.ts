@@ -47,10 +47,11 @@ const ui = createBlessedUI();
 
 function loadConfig(): Config {
   program
+    .version("1.4.0")
     .option("--debug", "Enable debug mode")
-    .option("--serialize <command>", "Command to serialize repository")
-    .option("--system-prompt <file>", "System prompt file")
-    .option("--hide-reasoning", "Hide AI reasoning")
+    .option("--serialize <command>", "Repository serialization command")
+    .option("--system-prompt <file>", "Path to system prompt file")
+    .option("--hide-reasoning", "Hide reasoning UI")
     .option(
       "--test-file-pattern <pattern>",
       "Glob pattern for test files",
@@ -60,12 +61,16 @@ function loadConfig(): Config {
       "--source-file-pattern <pattern>",
       "Glob pattern for source files",
       DEFAULT_CONFIG.sourceFilePattern
-    );
+    )
+    .argument("[test-command...]", "Test command to execute")
+    .action((testCommand) => {
+      program.opts().testCommand = testCommand.join(" ");
+    });
 
   program.parse();
 
   const options = program.opts();
-  const testCommand = program.args.join(" ");
+  const testCommand = options.testCommand;
 
   if (!testCommand) {
     console.error("No test command provided");
