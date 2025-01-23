@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-import { execSync, spawn } from "child_process";
-import fs from "fs";
-import path from "path";
+import packageJson from "../package.json" assert { type: "json" };
+import { execSync, spawn } from "node:child_process";
+import fs from "node:fs";
+import process from "node:process";
+import path from "node:path";
+
 import { program } from "commander";
-import process from "process";
 import blessed from "blessed";
 import contrib from "blessed-contrib";
 import OpenAI from "openai";
 import fastGlob from "fast-glob";
-import { AbortController } from "node:abort-controller";
+import globToRegexp from "glob-to-regexp";
 
 interface Config {
   debug: boolean;
@@ -17,8 +19,9 @@ interface Config {
   apiKey: string;
   systemPromptFile?: string;
   hideReasoning: boolean;
-  testFilePattern: string;
-  sourceFilePattern: string;
+  testFilePattern: string[];
+  sourceFilePattern: string[];
+  timeout: number;
 }
 
 interface Message {
@@ -35,26 +38,37 @@ const DEFAULT_PROMPT = [
   "Provide concise, actionable solutions.",
 ].join("\n");
 
+const DEFAULT_TEST_FILE_PATTERN = [
+  "**/*.{test,spec}.*",
+  "**/*.{tests,specs}.*",
+  "**/__tests__/**/*",
+  "**/__test__/**/*",
+  "**/test/**/*",
+  "**/tests/**/*",
+];
+
 const DEFAULT_CONFIG: Omit<Config, "apiKey" | "testCommand"> = {
   debug: false,
   serializeCommand: "yek",
   systemPromptFile: "",
   hideReasoning: false,
-  testFilePattern: "**/*.test.*",
-  sourceFilePattern: "!**/*.test.*",
+  testFilePattern: DEFAULT_TEST_FILE_PATTERN,
+  sourceFilePattern: DEFAULT_TEST_FILE_PATTERN.map((pattern) => `!${pattern}`),
+  timeout: 2 * 60 * 1000, // 2 minutes
 };
 
 const ui = createBlessedUI();
 
 function loadConfig(): Config {
   program
-    .version("1.4.1")
+    .version(packageJson.version)
     .enablePositionalOptions(true)
     .passThroughOptions(true)
     .option("--debug", "Enable debug mode")
     .option("--serialize <command>", "Repository serialization command")
     .option("--system-prompt <file>", "Path to system prompt file")
     .option("--hide-reasoning", "Hide reasoning UI")
+    .option("--timeout <seconds>", "Timeout for AI response", "120")
     .option(
       "--test-file-pattern <pattern>",
       "Glob pattern for test files",
@@ -96,6 +110,7 @@ function loadConfig(): Config {
     testFilePattern: options.testFilePattern ?? DEFAULT_CONFIG.testFilePattern,
     sourceFilePattern:
       options.sourceFilePattern ?? DEFAULT_CONFIG.sourceFilePattern,
+    timeout: Number.parseInt(options.timeout, 10) * 1000,
   };
 }
 
@@ -161,41 +176,70 @@ async function serializeRepository(
 }
 
 function findTestFiles(output: string, config: Config): string[] {
-  if (!output) return [];
+  const matchedFiles = new Set<string>();
+  const cwd = process.cwd();
 
-  const failureKeywords = ["fail", "error", "❌", "×", "✕", "⚠", "❗"];
-  const failedTests = [
-    ...new Set(
-      output.split("\n").flatMap((line) => {
-        if (failureKeywords.some((kw) => line.toLowerCase().includes(kw))) {
-          const match = line.match(/(\b(describe|it|test)\(['"`](.+?)['"`])/);
-          return match ? [match[3]] : [];
+  // 1. Convert test file patterns to regex patterns without anchors
+  const testFileRegexes = config.testFilePattern.map((pattern) => {
+    const regex = globToRegexp(pattern, {
+      globstar: true,
+      extended: true,
+      flags: "i",
+    });
+
+    // Remove ^/$ anchors to match anywhere in line
+    const source = regex.source.replace(/^\^/, "").replace(/\$$/, "");
+
+    return new RegExp(source, regex.flags);
+  });
+
+  // 2. Scan each output line for matching paths
+  output.split("\n").forEach((line) => {
+    testFileRegexes.forEach((regex) => {
+      const matches = line.match(regex);
+      if (matches?.[0]) {
+        const matchedPath = matches[0];
+
+        // Try both relative and absolute paths
+        const pathsToCheck = [matchedPath, path.join(cwd, matchedPath)];
+
+        for (const filePath of pathsToCheck) {
+          if (fs.existsSync(filePath)) {
+            matchedFiles.add(path.relative(cwd, filePath));
+            break;
+          }
         }
-        return [];
-      })
-    ),
-  ];
-
-  const patterns = [
-    config.testFilePattern,
-    "**/*{spec,test}.*",
-    "!**/node_modules/**",
-  ];
-
-  const testFiles = fastGlob.sync(patterns, {
-    absolute: true,
-    cwd: process.cwd(),
-    caseSensitiveMatch: false,
+      }
+    });
   });
 
-  return testFiles.filter((file) => {
-    try {
-      const content = fs.readFileSync(file, "utf8").toLowerCase();
-      return failedTests.some((test) => content.includes(test.toLowerCase()));
-    } catch {
-      return false;
-    }
-  });
+  // 3. Fallback to pattern matching if no explicit matches found
+  if (matchedFiles.size === 0) {
+    const allTestFiles = fastGlob.sync(config.testFilePattern, {
+      cwd,
+      absolute: false,
+      ignore: ["**/node_modules/**"],
+    });
+
+    allTestFiles.forEach((file) => {
+      if (output.includes(file)) {
+        matchedFiles.add(file);
+      }
+    });
+  }
+
+  if (config.debug) {
+    ui.appendOutputLog(
+      [
+        `Test file detection results:`,
+        `- Output lines scanned: ${output.split("\n").length}`,
+        `- Patterns used: ${config.testFilePattern.join(", ")}`,
+        `- Matched files: ${Array.from(matchedFiles).join(", ") || "none"}`,
+      ].join("\n")
+    );
+  }
+
+  return Array.from(matchedFiles);
 }
 
 async function getGitDiff(config: Config): Promise<string> {
@@ -343,6 +387,7 @@ function createBlessedUI(): BlessedUI {
     if (initialized && screen) {
       try {
         screen.destroy();
+        process.stdout.write("\x1B[0m\x1Bc"); // Clear screen
       } catch (error) {
         console.error("Error cleaning up UI:", error);
       }
@@ -368,10 +413,14 @@ async function streamAIResponse(
     baseURL: "https://api.deepseek.com",
   });
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  // const controller = new AbortController();
+
+  // const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   try {
+    if (config.debug) {
+      ui.appendOutputLog("Sending messages to AI...");
+    }
     const stream = await openai.chat.completions.create(
       {
         model: "deepseek-reasoner",
@@ -379,9 +428,13 @@ async function streamAIResponse(
         stream: true,
       },
       {
-        signal: controller.signal,
+        // signal: controller.signal,
       }
     );
+
+    if (config.debug) {
+      ui.appendOutputLog("AI response stream started");
+    }
 
     let fullContent = "";
     let fullReasoning = "";
@@ -393,6 +446,15 @@ async function streamAIResponse(
       const reasoningChunk =
         (chunk as any).choices[0]?.delta?.reasoning_content || "";
 
+      if (config.debug) {
+        // every 25 chunks
+        if (chunkCount % 25 === 0) {
+          ui.appendOutputLog(
+            `Received ${chunkCount} chunks. Content: ${contentChunk.length}b, Reasoning: ${reasoningChunk.length}b`
+          );
+        }
+      }
+
       fullContent += contentChunk;
       fullReasoning += reasoningChunk;
 
@@ -400,20 +462,16 @@ async function streamAIResponse(
         const displayText = reasoningChunk || contentChunk;
         ui.appendReasoningLog(displayText);
       }
-
-      if (config.debug && chunkCount % 10 === 0) {
-        ui.appendOutputLog(
-          `Processed ${chunkCount} chunks. Content: ${contentChunk.length}b, Reasoning: ${reasoningChunk.length}b`
-        );
-      }
     }
 
-    clearTimeout(timeoutId);
+    // clearTimeout(timeoutId);
     return fullContent || fullReasoning;
   } catch (error: unknown) {
-    clearTimeout(timeoutId);
+    // clearTimeout(timeoutId);
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("API request timed out after 2 minutes");
+      throw new Error(
+        `API request timed out after ${config.timeout / 1000} seconds`
+      );
     }
     if (config.debug) {
       ui.appendOutputLog(
@@ -450,12 +508,14 @@ async function main() {
 
     if (testFiles.length === 0) {
       ui.appendOutputLog(
-        "\n{WARN} No test files found matching failure patterns"
+        `\n{WARN} No test files found matching failure ${config.testFilePattern}`
       );
-      ui.appendOutputLog("Consider checking:");
-      ui.appendOutputLog("- Test file naming patterns");
-      ui.appendOutputLog("- Test failure output formatting");
-      process.exit(1);
+      ui.appendOutputLog(
+        "You can specify test file patterns with --test-file-pattern"
+      );
+      ui.appendOutputLog(
+        "Moving forward without having any test files anyways..."
+      );
     }
 
     const testContents = testFiles
@@ -475,9 +535,9 @@ async function main() {
         role: "user",
         content: [
           `## Repository Structure\n${repoStructure}`,
-          `## Test Output\n${testOutput}`,
-          `## Git Diff\n${gitDiff}`,
-          `## Test Files\n${testContents}`,
+          `## Output of running ${config.testCommand}\n${testOutput}`,
+          gitDiff ? `## Git Diff\n${gitDiff}` : "",
+          testFiles.length ? `## Test Files\n${testContents}` : ``,
         ].join("\n\n"),
       },
     ];
@@ -486,11 +546,9 @@ async function main() {
     const aiResponses = await streamAIResponse(config, messages);
 
     ui.destroy();
-    process.stdout.write("\x1B[0m\x1Bc");
     process.stdout.write(`${aiResponses}\n`);
   } catch (error) {
     ui.destroy();
-    process.stdout.write("\x1B[0m\x1Bc");
     console.error(
       "Error:",
       error instanceof Error ? error.message : String(error)
