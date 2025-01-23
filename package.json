@@ -13,7 +13,6 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "update-readme": "node dist/index.js --help | sed -n '/# CLI Reference/,$p' > README.md.tmp && sed '/# CLI Reference/,$d' README.md > README.md.new && cat README.md.tmp >> README.md.new && mv README.md.new README.md && rm README.md.tmp",
     "dev": "tsx src/index.ts",
     "test": "vitest --watch=false",
     "prepublish": "npm run build"

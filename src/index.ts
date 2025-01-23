@@ -119,6 +119,7 @@ async function executeCommand(
   args: string[],
   options: {
     shell: boolean;
+    onData?: (data: string) => void;
   } = {
     shell: true,
   }
@@ -131,13 +132,14 @@ async function executeCommand(
     });
 
     let output = "";
-    proc.stdout.on("data", (data) => {
-      output += data.toString();
-    });
+    const handleData = (data: Buffer) => {
+      const text = data.toString();
+      output += text;
+      options.onData?.(text);
+    };
 
-    proc.stderr.on("data", (data) => {
-      output += data.toString();
-    });
+    proc.stdout.on("data", handleData);
+    proc.stderr.on("data", handleData);
 
     proc.on("close", (code) => {
       code === 0
@@ -156,7 +158,22 @@ async function runTestCommand(
     if (config.debug) {
       ui.appendOutputLog(`Running test command: ${testCommand}`);
     }
-    const output = await executeCommand(cmd, args);
+
+    // Initialize UI before starting command
+    if (!config.hideReasoning) {
+      ui.initialize();
+    }
+
+    const output = await executeCommand(cmd, args, {
+      shell: true,
+      onData: (data) => {
+        ui.appendOutputLog(data);
+        if (config.debug) {
+          ui.appendReasoningLog(`Received ${data.length} bytes from tests...`);
+        }
+      },
+    });
+
     return output;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -488,12 +505,12 @@ async function main() {
     ui.destroy();
     process.exit(0);
   });
-
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    config.hideReasoning = true;
+  }
+  // Initialize UI immediately if not hidden
   if (!config.hideReasoning) {
     ui.initialize();
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      config.hideReasoning = true;
-    }
   }
 
   try {
@@ -503,7 +520,6 @@ async function main() {
       getGitDiff(config),
     ]);
 
-    ui.appendOutputLog(testOutput);
     const testFiles = findTestFiles(testOutput, config);
 
     if (testFiles.length === 0) {
