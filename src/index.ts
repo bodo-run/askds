@@ -48,6 +48,8 @@ const ui = createBlessedUI();
 function loadConfig(): Config {
   program
     .version("1.4.0")
+    .enablePositionalOptions(true)
+    .passThroughOptions(true)
     .option("--debug", "Enable debug mode")
     .option("--serialize <command>", "Repository serialization command")
     .option("--system-prompt <file>", "Path to system prompt file")
@@ -62,9 +64,9 @@ function loadConfig(): Config {
       "Glob pattern for source files",
       DEFAULT_CONFIG.sourceFilePattern
     )
-    .argument("[test-command...]", "Test command to execute")
-    .action((testCommand) => {
-      program.opts().testCommand = testCommand.join(" ");
+    .argument("[test-command-and-args...]", "Test command to execute")
+    .action((testCommandAndArgs) => {
+      program.opts().testCommand = testCommandAndArgs.join(" ");
     });
 
   program.parse();
