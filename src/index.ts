@@ -24,6 +24,10 @@ interface Config {
   testFilePattern: string[];
   sourceFilePattern: string[];
   timeout: number;
+  fix: boolean;
+  interactive: boolean;
+  testOutput?: string;
+  repoStructure?: string;
 }
 
 interface Message {
@@ -57,39 +61,14 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey" | "testCommand"> = {
   testFilePattern: DEFAULT_TEST_FILE_PATTERN,
   sourceFilePattern: DEFAULT_TEST_FILE_PATTERN.map((pattern) => `!${pattern}`),
   timeout: 2 * 60 * 1000, // 2 minutes
+  fix: false,
+  interactive: false,
 };
 
 const ui = createBlessedUI();
 
-function loadConfig(): Config {
-  program
-    .version(packageJson.version)
-    .enablePositionalOptions(true)
-    .passThroughOptions(true)
-    .option("--debug", "Enable debug mode")
-    .option("--serialize <command>", "Repository serialization command")
-    .option("--system-prompt <file>", "Path to system prompt file")
-    .option("--hide-reasoning", "Hide reasoning UI")
-    .option("--timeout <seconds>", "Timeout for AI response", "120")
-    .option(
-      "--test-file-pattern <pattern>",
-      "Glob pattern for test files",
-      DEFAULT_CONFIG.testFilePattern
-    )
-    .option(
-      "--source-file-pattern <pattern>",
-      "Glob pattern for source files",
-      DEFAULT_CONFIG.sourceFilePattern
-    )
-    .argument("[test-command-and-args...]", "Test command to execute")
-    .action((testCommandAndArgs) => {
-      program.opts().testCommand = testCommandAndArgs.join(" ");
-    });
-
-  program.parse();
-
-  const options = program.opts();
-  const testCommand = options.testCommand;
+function loadConfig(testCommandAndArgs: string[], options: any): Config {
+  const testCommand = testCommandAndArgs.join(" ");
 
   if (!testCommand) {
     console.error("No test command provided");
@@ -113,6 +92,8 @@ function loadConfig(): Config {
     sourceFilePattern:
       options.sourceFilePattern ?? DEFAULT_CONFIG.sourceFilePattern,
     timeout: Number.parseInt(options.timeout, 10) * 1000,
+    fix: options.fix || false,
+    interactive: options.interactive || false,
   };
 }
 
@@ -429,69 +410,23 @@ async function streamAIResponse(
 ): Promise<string> {
   const openai = new OpenAI({
     apiKey: config.apiKey,
-    baseURL: "https://api.deepseek.com",
+    baseURL: "https://api.fireworks.ai/inference/v1",
   });
-
-  // const controller = new AbortController();
-
-  // const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   try {
     if (config.debug) {
       ui.appendOutputLog("Sending messages to AI...");
     }
-    const stream = await openai.chat.completions.create(
-      {
-        model: "deepseek-reasoner",
-        messages,
-        stream: true,
-      },
-      {
-        // signal: controller.signal,
-      }
-    );
 
-    if (config.debug) {
-      ui.appendOutputLog("AI response stream started");
-    }
+    const response = await openai.chat.completions.create({
+      model: "@kortix-ai/fast-apply-7b-v1.0",
+      messages,
+      temperature: 0.01,
+      max_tokens: 4096,
+    });
 
-    let fullContent = "";
-    let fullReasoning = "";
-    let chunkCount = 0;
-
-    for await (const chunk of stream) {
-      chunkCount++;
-      const contentChunk = chunk.choices[0]?.delta?.content || "";
-      const reasoningChunk =
-        (chunk as any).choices[0]?.delta?.reasoning_content || "";
-
-      if (config.debug) {
-        // every 25 chunks
-        if (chunkCount % 25 === 0) {
-          ui.appendOutputLog(
-            `Received ${chunkCount} chunks. Content: ${contentChunk.length}b, Reasoning: ${reasoningChunk.length}b`
-          );
-        }
-      }
-
-      fullContent += contentChunk;
-      fullReasoning += reasoningChunk;
-
-      if (!config.hideReasoning) {
-        const displayText = reasoningChunk || contentChunk;
-        ui.appendReasoningLog(displayText);
-      }
-    }
-
-    // clearTimeout(timeoutId);
-    return fullContent || fullReasoning;
+    return response.choices[0].message.content || "";
   } catch (error: unknown) {
-    // clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        `API request timed out after ${config.timeout / 1000} seconds`
-      );
-    }
     if (config.debug) {
       ui.appendOutputLog(
         `API Error: ${error instanceof Error ? error.message : String(error)}`
@@ -501,38 +436,133 @@ async function streamAIResponse(
   }
 }
 
-interface FixConfig extends Config {
-  fixPatterns: string[];
-  maxFiles: number;
-  testOutput?: string;
-  repoStructure?: string;
+async function runTestAndFix(config: Config) {
+  // Run original test analysis
+  const { testOutput, repoStructure, gitDiff } = await loadRepoData(config);
+
+  // Get AI analysis
+  const analysis = await analyzeTestFailure(
+    config,
+    testOutput,
+    repoStructure,
+    gitDiff
+  );
+
+  // If fix requested, apply changes
+  if (config.fix) {
+    const fixConfig = {
+      ...config,
+      testOutput,
+      repoStructure,
+    };
+
+    const success = await applyAiFixes(fixConfig, {
+      interactive: config.interactive,
+    });
+
+    process.exit(success ? 0 : 1);
+  } else {
+    console.log(analysis);
+  }
 }
 
-function loadConfigForFix(): FixConfig {
-  return {
-    ...loadConfig(),
-    fixPatterns: ["**/*.{ts,js,py,java}"],
-    maxFiles: 50,
-  };
-}
+async function analyzeTestFailure(
+  config: Config,
+  testOutput: string,
+  repoStructure: string,
+  gitDiff: string
+): Promise<string> {
+  const testFiles = findTestFiles(testOutput, config);
 
-async function applyAiFixes(
-  config: FixConfig,
-  options: { dryRun?: boolean; interactive?: boolean }
-): Promise<boolean> {
-  const { repoStructure, testOutput, gitDiff } = await loadRepoData(config);
-  const filesToFix = await identifyFixableFiles(config);
-
-  let success = true;
-  for (const file of filesToFix) {
-    const fixResult = await processFileFix(file, config, options);
-    if (!fixResult) success = false;
+  if (testFiles.length === 0) {
+    ui.appendOutputLog(
+      `\n{WARN} No test files found matching failure ${config.testFilePattern}`
+    );
+    ui.appendOutputLog(
+      "You can specify test file patterns with --test-file-pattern"
+    );
+    ui.appendOutputLog(
+      "Moving forward without having any test files anyways..."
+    );
   }
 
-  return success;
+  const testContents = testFiles
+    .map((file) => `// ${file}\n${fs.readFileSync(file, "utf8")}`)
+    .join("\n\n");
+
+  const messages: Message[] = [
+    {
+      role: "system",
+      content: config.systemPromptFile
+        ? fs.existsSync(config.systemPromptFile)
+          ? fs.readFileSync(config.systemPromptFile, "utf8")
+          : DEFAULT_PROMPT
+        : DEFAULT_PROMPT,
+    },
+    {
+      role: "user",
+      content: [
+        `## Repository Structure\n${repoStructure}`,
+        `## Output of running ${config.testCommand}\n${testOutput}`,
+        gitDiff ? `## Git Diff\n${gitDiff}` : "",
+        testFiles.length ? `## Test Files\n${testContents}` : ``,
+      ].join("\n\n"),
+    },
+  ];
+
+  ui.appendReasoningLog("Analyzing test failures...\n");
+  return streamAIResponse(config, messages);
 }
 
-async function loadRepoData(config: FixConfig) {
+program
+  .name("askai")
+  .description("AI-powered test runner and fixer")
+  .argument("[test-command-and-args...]", "Test command to execute")
+  .option("--fix", "Automatically apply AI-suggested fixes")
+  .option(
+    "--interactive",
+    "Confirm each change before applying (requires --fix)"
+  )
+  .option("--debug", "Enable debug mode")
+  .option("--serialize <command>", "Repository serialization command")
+  .option("--system-prompt <file>", "Path to system prompt file")
+  .option("--hide-reasoning", "Hide reasoning UI")
+  .option("--timeout <seconds>", "Timeout for AI response", "120")
+  .option(
+    "--test-file-pattern <pattern>",
+    "Glob pattern for test files",
+    DEFAULT_CONFIG.testFilePattern
+  )
+  .option(
+    "--source-file-pattern <pattern>",
+    "Glob pattern for source files",
+    DEFAULT_CONFIG.sourceFilePattern
+  )
+  .action(async (testCommandAndArgs, options) => {
+    try {
+      const config = loadConfig(testCommandAndArgs, options);
+      await runTestAndFix(config);
+    } catch (error) {
+      console.error(
+        "Error:",
+        error instanceof Error ? error.message : String(error)
+      );
+      process.exit(1);
+    }
+  });
+
+async function main() {
+  process.on("SIGINT", () => {
+    ui.destroy();
+    process.exit(0);
+  });
+
+  program.parse();
+}
+
+main().catch(console.error);
+
+async function loadRepoData(config: Config) {
   return Promise.all([
     serializeRepository(config.serializeCommand, config),
     runTestCommand(config.testCommand, config),
@@ -544,19 +574,34 @@ async function loadRepoData(config: FixConfig) {
   }));
 }
 
-async function identifyFixableFiles(config: FixConfig): Promise<string[]> {
-  return fastGlob(config.fixPatterns, {
+async function applyAiFixes(
+  config: Config,
+  options: { interactive?: boolean }
+): Promise<boolean> {
+  const filesToFix = await identifyFixableFiles(config);
+
+  let success = true;
+  for (const file of filesToFix) {
+    const fixResult = await processFileFix(file, config, options);
+    if (!fixResult) success = false;
+  }
+
+  return success;
+}
+
+async function identifyFixableFiles(config: Config): Promise<string[]> {
+  return fastGlob(["**/*.{ts,js,py,java}"], {
     cwd: process.cwd(),
     ignore: ["**/node_modules/**", ...config.testFilePattern],
     absolute: false,
     onlyFiles: true,
-  }).then((files) => files.slice(0, config.maxFiles));
+  }).then((files) => files.slice(0, 50));
 }
 
 async function processFileFix(
   filePath: string,
-  config: FixConfig,
-  options: { dryRun?: boolean; interactive?: boolean }
+  config: Config,
+  options: { interactive?: boolean }
 ) {
   const fullPath = path.join(process.cwd(), filePath);
   const originalContent = await fs.promises.readFile(fullPath, "utf8");
@@ -567,12 +612,6 @@ async function processFileFix(
 
   if (!fixedContent || fixedContent === originalContent) {
     return false;
-  }
-
-  if (options.dryRun) {
-    console.log(`\n--- Proposed changes for ${filePath} ---\n`);
-    console.log(fixedContent);
-    return true;
   }
 
   if (options.interactive) {
@@ -591,7 +630,7 @@ async function processFileFix(
 function createFixMessages(
   filePath: string,
   content: string,
-  config: FixConfig
+  config: Config
 ): Message[] {
   return [
     {
@@ -651,98 +690,3 @@ function highlightChanges(original: string, fixed: string): string {
     )
     .join("\n");
 }
-
-program
-  .command("fix")
-  .description("Automatically apply suggested fixes")
-  .option("--dry-run", "Show proposed changes without applying")
-  .option("--interactive", "Confirm each change before applying")
-  .action(async (options) => {
-    try {
-      const config = loadConfigForFix();
-      const result = await applyAiFixes(config, options);
-      process.exit(result ? 0 : 1);
-    } catch (error: unknown) {
-      console.error(
-        "Fix failed:",
-        error instanceof Error ? error.message : String(error)
-      );
-      process.exit(1);
-    }
-  });
-
-async function main() {
-  const config = loadConfig();
-  process.on("SIGINT", () => {
-    ui.destroy();
-    process.exit(0);
-  });
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    config.hideReasoning = true;
-  }
-  // Initialize UI immediately if not hidden
-  if (!config.hideReasoning) {
-    ui.initialize();
-  }
-
-  try {
-    const [testOutput, repoStructure, gitDiff] = await Promise.all([
-      runTestCommand(config.testCommand, config),
-      serializeRepository(config.serializeCommand, config),
-      getGitDiff(config),
-    ]);
-
-    const testFiles = findTestFiles(testOutput, config);
-
-    if (testFiles.length === 0) {
-      ui.appendOutputLog(
-        `\n{WARN} No test files found matching failure ${config.testFilePattern}`
-      );
-      ui.appendOutputLog(
-        "You can specify test file patterns with --test-file-pattern"
-      );
-      ui.appendOutputLog(
-        "Moving forward without having any test files anyways..."
-      );
-    }
-
-    const testContents = testFiles
-      .map((file) => `// ${file}\n${fs.readFileSync(file, "utf8")}`)
-      .join("\n\n");
-
-    const messages: Message[] = [
-      {
-        role: "system",
-        content: config.systemPromptFile
-          ? fs.existsSync(config.systemPromptFile)
-            ? fs.readFileSync(config.systemPromptFile, "utf8")
-            : DEFAULT_PROMPT
-          : DEFAULT_PROMPT,
-      },
-      {
-        role: "user",
-        content: [
-          `## Repository Structure\n${repoStructure}`,
-          `## Output of running ${config.testCommand}\n${testOutput}`,
-          gitDiff ? `## Git Diff\n${gitDiff}` : "",
-          testFiles.length ? `## Test Files\n${testContents}` : ``,
-        ].join("\n\n"),
-      },
-    ];
-
-    ui.appendReasoningLog("Analyzing test failures...\n");
-    const aiResponses = await streamAIResponse(config, messages);
-
-    ui.destroy();
-    process.stdout.write(`${aiResponses}\n`);
-  } catch (error) {
-    ui.destroy();
-    console.error(
-      "Error:",
-      error instanceof Error ? error.message : String(error)
-    );
-    process.exit(1);
-  }
-}
-
-main().catch(console.error);

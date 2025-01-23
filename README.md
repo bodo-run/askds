@@ -1,48 +1,54 @@
 # `askds` - DeepSeek R1-powered test debugger
 
-`askds` is a test debugger that helps diagnose test failures using DeepSeek R1. It runs your tests and provides the results to an AI agent to analyze and suggest solutions.
-
-For repository serialization, it uses [`yek`](https://github.com/bodo-run/yek) to serialize the repository.
-
-[Screencast](https://github.com/user-attachments/assets/477e92e2-6701-4138-8ffb-c910ef61571e)
+`askds` is a test debugger that helps diagnose test failures using DeepSeek R1. It runs your tests, analyzes failures, and can automatically apply fixes using [`fast-apply`](https://github.com/kortix-ai/fast-apply).
 
 ## Installation
 
 Make sure you have [`yek`](https://github.com/bodo-run/yek) installed:
 
 ```bash
-curl -fsSL https://bodo.run/yek.sh | bash
-```
-
-Then install `askds`:
-
-```bash
 npm install -g askds
 ```
 
-## Usage
+## Basic Usage
 
-Basic usage:
+Run tests with AI analysis:
 
 ```bash
 export DEEPSEEK_API_KEY="your-api-key"
 askds npm test
 ```
 
-For commands with arguments:
+Run tests and automatically apply fixes:
 
 ```bash
-askds npm test -- --watch
-askds cargo test --features special
+export FIREWORKS_AI_API_KEY="your-api-key"
+askds --fix npm test
+```
+
+## Fix Options
+
+- `--fix`: Enable automatic fixing. You will need a Fireworks AI API key.
+- `--interactive`: Confirm each change before applying, only works with `--fix`
+
+Example workflow:
+
+```bash
+# Run tests and apply fixes interactively
+askds --fix --interactive npm test
+
+# See proposed changes without modifying files
+askds --fix npm test
 ```
 
 ## Configuration
 
 Set these environment variables to customize behavior:
 
-| Variable           | Description      | Default |
-| ------------------ | ---------------- | ------- |
-| `DEEPSEEK_API_KEY` | Required API key | -       |
+| Variable               | Description                         | Default |
+| ---------------------- | ----------------------------------- | ------- |
+| `DEEPSEEK_API_KEY`     | Required API key                    | -       |
+| `FIREWORKS_AI_API_KEY` | Required API key for applying fixes | -       |
 
 Command line options:
 
@@ -54,68 +60,32 @@ Command line options:
 | `--debug`               | Enable debug mode             | `false`        |
 | `--hide-reasoning`      | Hide AI reasoning             | `false`        |
 | `--system-prompt`       | Custom system prompt file     | -              |
+| `--fix`                 | Enable automatic fixing       | `false`        |
+| `--interactive`         | Confirm each fix              | `false`        |
+
+## How It Works
+
+1. Runs your test command
+2. Analyzes failures using Fireworks AI
+3. Generates targeted fixes while preserving code structure
+4. Applies changes safely with user confirmation (if `--fix` is enabled)
 
 ## Examples
 
-### Serialization
-
-See [`yek`](https://github.com/bodo-run/yek) for more information on serialization. You can run any command that outputs a string to the console using `--serialize`.
+### Basic Test Analysis
 
 ```bash
-askds --serialize="yek src/" npm test
+askai npm test
 ```
 
-### Asking Questions
-
-Since we run the command you provide to get test results, you can execute any arbitrary command to feed input to the AI agent.
+### Interactive Fixing
 
 ```bash
-askds --serialize="yek src/" echo "Review my changes"
+askai --fix --interactive npm test
 ```
 
-### Writing Custom Prompts
+### Custom Test Command
 
 ```bash
-askds --system-prompt="./prompts/fix-test.txt" cargo test
+askai --fix cargo test --features special
 ```
-
-### Hide Reasoning
-
-```bash
-askds --hide-reasoning cargo test
-```
-
-### Debug Mode
-
-```bash
-askds --debug npm test
-```
-
-### Automatic Fixes
-
-Apply AI-suggested fixes:
-
-```bash
-askds fix --interactive
-```
-
-Options:
-
-- `--dry-run`: Show proposed changes without modifying files
-- `--interactive`: Confirm each change before applying
-
-Example workflow:
-
-1. Run tests and get analysis:
-   ```bash
-   askds npm test
-   ```
-2. Apply fixes automatically:
-   ```bash
-   askds fix
-   ```
-3. Review and commit changes:
-   ```bash
-   git diff
-   git commit -am 'Apply AI fixes'
-   ```
