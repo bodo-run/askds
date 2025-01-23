@@ -1,6 +1,6 @@
 {
   "name": "askds",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "",
   "main": "dist/index.js",
   "bin": {
@@ -14,7 +14,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "vitest --watch=false"
+    "test": "vitest --watch=false",
+    "prepublish": "npm run build"
   },
   "keywords": [],
   "author": "",
