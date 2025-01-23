@@ -8,6 +8,7 @@ import blessed from "blessed";
 import contrib from "blessed-contrib";
 import OpenAI from "openai";
 import fastGlob from "fast-glob";
+import { AbortController } from "node:abort-controller";
 
 interface Config {
   debug: boolean;
@@ -47,7 +48,7 @@ const ui = createBlessedUI();
 
 function loadConfig(): Config {
   program
-    .version("1.4.0")
+    .version("1.4.1")
     .enablePositionalOptions(true)
     .passThroughOptions(true)
     .option("--debug", "Enable debug mode")
@@ -110,8 +111,8 @@ async function executeCommand(
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
       shell: options.shell,
-      stdio: ["inherit", "pipe", "pipe"], // Preserve stdout configuration
-      env: { ...process.env, FORCE_COLOR: "1" }, // Force color output
+      stdio: ["inherit", "pipe", "pipe"],
+      env: { ...process.env, FORCE_COLOR: "1" },
     });
 
     let output = "";
@@ -160,50 +161,60 @@ async function serializeRepository(
 }
 
 function findTestFiles(output: string, config: Config): string[] {
-  if (!output) {
-    ui.appendOutputLog("No test output detected");
-    return [];
-  }
+  if (!output) return [];
 
-  const failedTests = new Set(
-    output
-      .split("\n")
-      .filter((line) => /(fail|error|❌|×)/i.test(line))
-      .map((line) => line.match(/\b(test\w*)\b/)?.[1])
-      .filter(Boolean) as string[]
-  );
+  const failureKeywords = ["fail", "error", "❌", "×", "✕", "⚠", "❗"];
+  const failedTests = [
+    ...new Set(
+      output.split("\n").flatMap((line) => {
+        if (failureKeywords.some((kw) => line.toLowerCase().includes(kw))) {
+          const match = line.match(/(\b(describe|it|test)\(['"`](.+?)['"`])/);
+          return match ? [match[3]] : [];
+        }
+        return [];
+      })
+    ),
+  ];
 
-  const testFiles = fastGlob.sync(config.testFilePattern, {
+  const patterns = [
+    config.testFilePattern,
+    "**/*{spec,test}.*",
+    "!**/node_modules/**",
+  ];
+
+  const testFiles = fastGlob.sync(patterns, {
     absolute: true,
     cwd: process.cwd(),
+    caseSensitiveMatch: false,
   });
 
-  if (config.debug) {
-    ui.appendOutputLog(`Found test files via glob: ${testFiles.join(", ")}`);
-  }
-
-  const matchingFiles = testFiles.filter((file) => {
+  return testFiles.filter((file) => {
     try {
-      const content = fs.readFileSync(file, "utf8");
-      return Array.from(failedTests).some((test) => content.includes(test));
-    } catch (error) {
-      ui.appendOutputLog(`Error reading ${file}: ${error}`);
+      const content = fs.readFileSync(file, "utf8").toLowerCase();
+      return failedTests.some((test) => content.includes(test.toLowerCase()));
+    } catch {
       return false;
     }
   });
-
-  return matchingFiles;
 }
 
-async function getGitDiff(config: Config) {
-  const diff = execSync("git diff | cat", { stdio: "pipe" }).toString();
-  if (diff.includes("No such file or directory")) {
+async function getGitDiff(config: Config): Promise<string> {
+  try {
+    const diff = execSync("git diff --staged", { stdio: "pipe" }).toString();
+    if (config.debug) {
+      ui.appendOutputLog(`Git Diff:\n${diff}`);
+    }
+    return diff;
+  } catch (error) {
+    if (config.debug) {
+      ui.appendOutputLog(
+        `Git Diff Error: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return "";
   }
-  if (config.debug) {
-    ui.appendOutputLog(`Git Diff:\n${diff}`);
-  }
-  return diff;
 }
 
 const filterCursorCodes = (text: string) => text.replace(/\x1B\[\?25[hl]/g, "");
@@ -354,60 +365,77 @@ async function streamAIResponse(
 ): Promise<string> {
   const openai = new OpenAI({
     apiKey: config.apiKey,
-    baseURL: "https://api.deepseek.com", // Fixed base URL
+    baseURL: "https://api.deepseek.com",
   });
 
-  const stream = await openai.chat.completions.create({
-    model: "deepseek-reasoner",
-    messages,
-    stream: true,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-  let fullContent = "";
-  let fullReasoning = "";
+  try {
+    const stream = await openai.chat.completions.create(
+      {
+        model: "deepseek-reasoner",
+        messages,
+        stream: true,
+      },
+      {
+        signal: controller.signal,
+      }
+    );
 
-  for await (const chunk of stream) {
-    // Handle both content and reasoning_content
-    const contentChunk = chunk.choices[0]?.delta?.content || "";
-    // @ts-ignore
-    const reasoningChunk = chunk.choices[0]?.delta?.reasoning_content || "";
+    let fullContent = "";
+    let fullReasoning = "";
+    let chunkCount = 0;
 
-    fullContent += contentChunk;
-    fullReasoning += reasoningChunk;
+    for await (const chunk of stream) {
+      chunkCount++;
+      const contentChunk = chunk.choices[0]?.delta?.content || "";
+      const reasoningChunk =
+        (chunk as any).choices[0]?.delta?.reasoning_content || "";
 
-    // Display reasoning content if not hidden
-    if (!config.hideReasoning) {
-      const displayText = reasoningChunk || contentChunk;
-      ui.appendReasoningLog(displayText);
+      fullContent += contentChunk;
+      fullReasoning += reasoningChunk;
+
+      if (!config.hideReasoning) {
+        const displayText = reasoningChunk || contentChunk;
+        ui.appendReasoningLog(displayText);
+      }
+
+      if (config.debug && chunkCount % 10 === 0) {
+        ui.appendOutputLog(
+          `Processed ${chunkCount} chunks. Content: ${contentChunk.length}b, Reasoning: ${reasoningChunk.length}b`
+        );
+      }
     }
-  }
 
-  // Prioritize content over reasoning for final response
-  return fullContent || fullReasoning;
+    clearTimeout(timeoutId);
+    return fullContent || fullReasoning;
+  } catch (error: unknown) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("API request timed out after 2 minutes");
+    }
+    if (config.debug) {
+      ui.appendOutputLog(
+        `API Error: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    throw error;
+  }
 }
 
 async function main() {
   const config = loadConfig();
-
   process.on("SIGINT", () => {
     ui.destroy();
     process.exit(0);
   });
 
-  // Initialize UI only if:
-  // 1. Reasoning is not hidden
-  // 2. We're in a TTY environment
   if (!config.hideReasoning) {
     ui.initialize();
-
-    // If we're not in a TTY environment, force hide reasoning
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       config.hideReasoning = true;
     }
-  }
-
-  if (config.debug) {
-    ui.appendOutputLog(`Configuration: ${JSON.stringify(config)}`);
   }
 
   try {
@@ -418,12 +446,18 @@ async function main() {
     ]);
 
     ui.appendOutputLog(testOutput);
+    const testFiles = findTestFiles(testOutput, config);
 
-    if (config.debug) {
-      ui.appendReasoningLog(`gitDiff: ${gitDiff}`);
+    if (testFiles.length === 0) {
+      ui.appendOutputLog(
+        "\n{WARN} No test files found matching failure patterns"
+      );
+      ui.appendOutputLog("Consider checking:");
+      ui.appendOutputLog("- Test file naming patterns");
+      ui.appendOutputLog("- Test failure output formatting");
+      process.exit(1);
     }
 
-    const testFiles = findTestFiles(testOutput, config);
     const testContents = testFiles
       .map((file) => `// ${file}\n${fs.readFileSync(file, "utf8")}`)
       .join("\n\n");
@@ -452,15 +486,16 @@ async function main() {
     const aiResponses = await streamAIResponse(config, messages);
 
     ui.destroy();
-    // Reset terminal formatting and clear any lingering UI state
     process.stdout.write("\x1B[0m\x1Bc");
-    // Force synchronous output and ensure it's flushed
     process.stdout.write(`${aiResponses}\n`);
   } catch (error) {
     ui.destroy();
-    // Reset terminal formatting and clear any lingering UI state
     process.stdout.write("\x1B[0m\x1Bc");
-    console.error("Error:", error);
+    console.error(
+      "Error:",
+      error instanceof Error ? error.message : String(error)
+    );
+    process.exit(1);
   }
 }
 
