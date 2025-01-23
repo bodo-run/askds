@@ -11,6 +11,8 @@ import contrib from "blessed-contrib";
 import OpenAI from "openai";
 import fastGlob from "fast-glob";
 import globToRegexp from "glob-to-regexp";
+import { createPatch, parsePatch, ParsedDiff } from "diff";
+import { CodeFix, FixResult } from "./types.js";
 
 interface Config {
   debug: boolean;
@@ -498,6 +500,176 @@ async function streamAIResponse(
     throw error;
   }
 }
+
+interface FixConfig extends Config {
+  fixPatterns: string[];
+  maxFiles: number;
+  testOutput?: string;
+  repoStructure?: string;
+}
+
+function loadConfigForFix(): FixConfig {
+  return {
+    ...loadConfig(),
+    fixPatterns: ["**/*.{ts,js,py,java}"],
+    maxFiles: 50,
+  };
+}
+
+async function applyAiFixes(
+  config: FixConfig,
+  options: { dryRun?: boolean; interactive?: boolean }
+): Promise<boolean> {
+  const { repoStructure, testOutput, gitDiff } = await loadRepoData(config);
+  const filesToFix = await identifyFixableFiles(config);
+
+  let success = true;
+  for (const file of filesToFix) {
+    const fixResult = await processFileFix(file, config, options);
+    if (!fixResult) success = false;
+  }
+
+  return success;
+}
+
+async function loadRepoData(config: FixConfig) {
+  return Promise.all([
+    serializeRepository(config.serializeCommand, config),
+    runTestCommand(config.testCommand, config),
+    getGitDiff(config),
+  ]).then(([repoStructure, testOutput, gitDiff]) => ({
+    repoStructure,
+    testOutput,
+    gitDiff,
+  }));
+}
+
+async function identifyFixableFiles(config: FixConfig): Promise<string[]> {
+  return fastGlob(config.fixPatterns, {
+    cwd: process.cwd(),
+    ignore: ["**/node_modules/**", ...config.testFilePattern],
+    absolute: false,
+    onlyFiles: true,
+  }).then((files) => files.slice(0, config.maxFiles));
+}
+
+async function processFileFix(
+  filePath: string,
+  config: FixConfig,
+  options: { dryRun?: boolean; interactive?: boolean }
+) {
+  const fullPath = path.join(process.cwd(), filePath);
+  const originalContent = await fs.promises.readFile(fullPath, "utf8");
+
+  const messages = createFixMessages(filePath, originalContent, config);
+  const aiResponse = await streamAIResponse(config, messages);
+  const fixedContent = extractFixedCode(aiResponse);
+
+  if (!fixedContent || fixedContent === originalContent) {
+    return false;
+  }
+
+  if (options.dryRun) {
+    console.log(`\n--- Proposed changes for ${filePath} ---\n`);
+    console.log(fixedContent);
+    return true;
+  }
+
+  if (options.interactive) {
+    const confirmed = await promptConfirmation(
+      filePath,
+      originalContent,
+      fixedContent
+    );
+    if (!confirmed) return false;
+  }
+
+  await fs.promises.writeFile(fullPath, fixedContent, "utf8");
+  return true;
+}
+
+function createFixMessages(
+  filePath: string,
+  content: string,
+  config: FixConfig
+): Message[] {
+  return [
+    {
+      role: "system",
+      content: `You are a senior engineer fixing code issues. Provide ONLY the corrected file content wrapped in <updated-code> tags. Preserve formatting and comments.`,
+    },
+    {
+      role: "user",
+      content: [
+        `File: ${filePath}`,
+        `Current content:\n${content}`,
+        `Test failures:\n${config.testOutput}`,
+        `Repository context:\n${config.repoStructure}`,
+      ].join("\n\n"),
+    },
+  ];
+}
+
+function extractFixedCode(aiResponse: string): string | null {
+  const startTag = "<updated-code>";
+  const endTag = "</updated-code>";
+  const start = aiResponse.indexOf(startTag);
+  const end = aiResponse.indexOf(endTag);
+
+  if (start === -1 || end === -1) return null;
+  return aiResponse.slice(start + startTag.length, end).trim();
+}
+
+async function promptConfirmation(
+  filePath: string,
+  original: string,
+  fixed: string
+): Promise<boolean> {
+  console.log(`\nChanges for ${filePath}:`);
+  console.log(highlightChanges(original, fixed));
+  const answer = await new Promise<string>((resolve) => {
+    const prompt = blessed.prompt({
+      text: "Apply these changes? (y/N)",
+      onSubmit: (value: string) => resolve(value || "n"),
+    });
+    prompt.focus();
+  });
+  return answer.toLowerCase() === "y";
+}
+
+function highlightChanges(original: string, fixed: string): string {
+  const diff = createPatch("file", original, fixed, "", "");
+  return (parsePatch(diff)[0] as ParsedDiff).hunks
+    .map((hunk: { lines: string[] }) =>
+      hunk.lines
+        .map((line: string) => {
+          if (line.startsWith("-")) return `\x1b[31m${line}\x1b[0m`;
+          if (line.startsWith("+")) return `\x1b[32m${line}\x1b[0m`;
+          return line;
+        })
+        .join("\n")
+    )
+    .join("\n");
+}
+
+program
+  .command("fix")
+  .description("Automatically apply suggested fixes")
+  .option("--dry-run", "Show proposed changes without applying")
+  .option("--interactive", "Confirm each change before applying")
+  .action(async (options) => {
+    try {
+      const config = loadConfigForFix();
+      const result = await applyAiFixes(config, options);
+      process.exit(result ? 0 : 1);
+    } catch (error: unknown) {
+      console.error(
+        "Fix failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+      process.exit(1);
+    }
+  });
 
 async function main() {
   const config = loadConfig();

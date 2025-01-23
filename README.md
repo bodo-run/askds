@@ -91,3 +91,31 @@ askds --hide-reasoning cargo test
 askds --debug npm test
 ```
 
+### Automatic Fixes
+
+Apply AI-suggested fixes:
+
+```bash
+askds fix --interactive
+```
+
+Options:
+
+- `--dry-run`: Show proposed changes without modifying files
+- `--interactive`: Confirm each change before applying
+
+Example workflow:
+
+1. Run tests and get analysis:
+   ```bash
+   askds npm test
+   ```
+2. Apply fixes automatically:
+   ```bash
+   askds fix
+   ```
+3. Review and commit changes:
+   ```bash
+   git diff
+   git commit -am 'Apply AI fixes'
+   ```

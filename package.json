@@ -21,6 +21,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/diff": "^7.0.0",
     "@types/glob-to-regexp": "^0.4.4",
     "@types/node": "^22.10.7",
     "tslib": "^2.8.1",
@@ -33,6 +34,7 @@
     "blessed": "^0.1.81",
     "blessed-contrib": "^4.8.20",
     "commander": "^13.1.0",
+    "diff": "^5.1.0",
     "fast-glob": "^3.3.3",
     "glob-to-regexp": "^0.4.1",
     "openai": "^4.79.4"

@@ -20,6 +20,9 @@ importers:
       commander:
         specifier: ^13.1.0
         version: 13.1.0
+      diff:
+        specifier: ^5.1.0
+        version: 5.2.0
       fast-glob:
         specifier: ^3.3.3
         version: 3.3.3
@@ -30,6 +33,9 @@ importers:
         specifier: ^4.79.4
         version: 4.79.4
     devDependencies:
+      '@types/diff':
+        specifier: ^7.0.0
+        version: 7.0.0
       '@types/glob-to-regexp':
         specifier: ^0.4.4
         version: 0.4.4
@@ -462,6 +468,9 @@ packages:
   '@types/blessed@0.1.25':
     resolution: {integrity: sha512-kQsjBgtsbJLmG6CJA+Z6Nujj+tq1fcSE3UIowbDvzQI4wWmoTV7djUDhSo5lDjgwpIN0oRvks0SA5mMdKE5eFg==}
 
+  '@types/diff@7.0.0':
+    resolution: {integrity: sha512-sVpkpbnTJL9CYoDf4U+tHaQLe5HiTaHWY7m9FuYA7oMCHwC9ie0Vh9eIGapyzYrU3+pILlSY2fAc4elfw5m4dg==}
+
   '@types/estree@1.0.6':
     resolution: {integrity: sha512-AYnb1nQyY49te+VRAVgmzfcgjYS91mY5P0TKUDCLEM+gNnA+3T6rWITXRLYCpahpqSQbN5cE+gHpnPyXjHWxcw==}
 
@@ -634,6 +643,10 @@ packages:
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
     engines: {node: '>=0.4.0'}
+
+  diff@5.2.0:
+    resolution: {integrity: sha512-uIFDxqpRZGZ6ThOk84hEfqWoHx2devRFvpTZcTHur85vImfaxUbTW9Ryh4CpCuDnToOP1CEtXKIgytHBPVff5A==}
+    engines: {node: '>=0.3.1'}
 
   drawille-blessed-contrib@1.0.0:
     resolution: {integrity: sha512-WnHMgf5en/hVOsFhxLI8ZX0qTJmerOsVjIMQmn4cR1eI8nLGu+L7w5ENbul+lZ6w827A3JakCuernES5xbHLzQ==}
@@ -1324,6 +1337,8 @@ snapshots:
     dependencies:
       '@types/node': 22.10.7
 
+  '@types/diff@7.0.0': {}
+
   '@types/estree@1.0.6': {}
 
   '@types/glob-to-regexp@0.4.4': {}
@@ -1501,6 +1516,8 @@ snapshots:
   deep-eql@5.0.2: {}
 
   delayed-stream@1.0.0: {}
+
+  diff@5.2.0: {}
 
   drawille-blessed-contrib@1.0.0: {}
 
