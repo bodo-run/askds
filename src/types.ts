@@ -37,11 +37,9 @@ export interface Config {
   /** Command to run tests */
   testCommand: string;
   /** Command to serialize test output */
-  serializeCommand: string;
-  /** API key for external services */
-  apiKey: string;
+  serialize: string;
   /** Optional path to system prompt file */
-  systemPromptFile?: string;
+  systemPrompt: string;
   /** Whether to hide reasoning in output */
   hideReasoning: boolean;
   /** Glob patterns for test files */

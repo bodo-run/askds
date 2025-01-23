@@ -6,7 +6,6 @@ import process from "node:process";
 import fastGlob from "fast-glob";
 import globToRegexp from "glob-to-regexp";
 
-import { DEFAULT_CONFIG } from "./constants.js";
 import { analyzeTestFailure, applyAiFixes } from "./fix.js";
 import { Config } from "./types.js";
 import { ui } from "./ui.js";
@@ -19,25 +18,10 @@ export function loadConfig(testCommandAndArgs: string[], options: any): Config {
     process.exit(1);
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    console.error("DEEPSEEK_API_KEY environment variable not set");
-    process.exit(1);
-  }
-
   return {
-    debug: options.debug ?? DEFAULT_CONFIG.debug,
+    ...options,
     testCommand,
-    serializeCommand: options.serialize ?? DEFAULT_CONFIG.serializeCommand,
-    apiKey,
-    systemPromptFile: options.systemPrompt ?? DEFAULT_CONFIG.systemPromptFile,
-    hideReasoning: options.hideReasoning ?? DEFAULT_CONFIG.hideReasoning,
-    testFilePattern: options.testFilePattern ?? DEFAULT_CONFIG.testFilePattern,
-    sourceFilePattern:
-      options.sourceFilePattern ?? DEFAULT_CONFIG.sourceFilePattern,
     timeout: Number.parseInt(options.timeout, 10) * 1000,
-    fix: options.fix || false,
-    interactive: options.interactive || false,
   };
 }
 
@@ -84,11 +68,6 @@ export async function runTestCommand(
   try {
     if (config.debug) {
       ui.appendOutputLog(`Running test command: ${testCommand}`);
-    }
-
-    // Initialize UI before starting command
-    if (!config.hideReasoning) {
-      ui.initialize();
     }
 
     const output = await executeCommand(cmd, args, {
@@ -207,7 +186,7 @@ export async function getGitDiff(config: Config): Promise<string> {
 
 export async function loadRepoData(config: Config) {
   return Promise.all([
-    serializeRepository(config.serializeCommand, config),
+    serializeRepository(config.serialize, config),
     runTestCommand(config.testCommand, config),
     getGitDiff(config),
   ]).then(([repoStructure, testOutput, gitDiff]) => ({
@@ -217,10 +196,19 @@ export async function loadRepoData(config: Config) {
   }));
 }
 
-export async function runTestAndFix(config: Config) {
-  // Run original test analysis
-  const { testOutput, repoStructure, gitDiff } = await loadRepoData(config);
+interface RunTestAndFixParams {
+  config: Config;
+  testOutput: string;
+  repoStructure: string;
+  gitDiff: string;
+}
 
+export async function runTestAndFix({
+  config,
+  testOutput,
+  repoStructure,
+  gitDiff,
+}: RunTestAndFixParams) {
   // Get AI analysis
   const analysis = await analyzeTestFailure(
     config,
@@ -243,6 +231,6 @@ export async function runTestAndFix(config: Config) {
 
     process.exit(success ? 0 : 1);
   } else {
-    console.log(analysis);
+    process.stdout.write(analysis);
   }
 }

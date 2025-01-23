@@ -89,3 +89,31 @@ askai --fix --interactive npm test
 ```bash
 askai --fix cargo test --features special
 ```
+
+## CLI Reference
+
+```
+Usage: askds [options] [test-command-and-args...]
+
+Arguments:
+  test-command-and-args            Test command to execute
+
+Options:
+  -V, --version                    output the version number
+  --fix                            Automatically apply AI-suggested fixes
+                                   (default: false)
+  --interactive                    Confirm each change before applying (requires
+                                   --fix) (default: true)
+  --debug                          Enable debug mode (default: false)
+  --serialize <command>            Repository serialization command (default:
+                                   "yek")
+  --system-prompt <file>           Path to system prompt file
+  --hide-reasoning                 Hide reasoning UI (default: false)
+  --timeout <seconds>              Timeout for AI response (default: "120")
+  --test-file-pattern <pattern>    Glob pattern for test files (default:
+                                   ["**/*.{test,spec}.*","**/*.{tests,specs}.*","**/__tests__/**/*","**/__test__/**/*","**/test/**/*","**/tests/**/*"])
+  --source-file-pattern <pattern>  Glob pattern for source files (default:
+                                   ["!**/*.{test,spec}.*","!**/*.{tests,specs}.*","!**/__tests__/**/*","!**/__test__/**/*","!**/test/**/*","!**/tests/**/*"])
+  -h, --help                       display help for command
+
+```

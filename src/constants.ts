@@ -1,5 +1,3 @@
-import { Config } from "./types";
-
 export const DEFAULT_PROMPT = [
   "You are a senior software engineer helping debug test failures. Analyze:",
   "1. Test output",
@@ -18,14 +16,4 @@ export const DEFAULT_TEST_FILE_PATTERN = [
   "**/tests/**/*",
 ];
 
-export const DEFAULT_CONFIG: Omit<Config, "apiKey" | "testCommand"> = {
-  debug: false,
-  serializeCommand: "yek",
-  systemPromptFile: "",
-  hideReasoning: false,
-  testFilePattern: DEFAULT_TEST_FILE_PATTERN,
-  sourceFilePattern: DEFAULT_TEST_FILE_PATTERN.map((pattern) => `!${pattern}`),
-  timeout: 2 * 60 * 1000, // 2 minutes
-  fix: false,
-  interactive: false,
-};
+export const MAX_FILES_TO_FIX = 50;

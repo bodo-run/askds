@@ -5,9 +5,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { parsePatch } from "diff";
-import { streamAIResponse } from "./api";
+import { streamAIResponse, apis } from "./api";
 import { findTestFiles } from "./commands";
-import { DEFAULT_PROMPT } from "./constants";
+import { DEFAULT_PROMPT, MAX_FILES_TO_FIX } from "./constants";
 import { Config, Message } from "./types";
 import { ui } from "./ui";
 
@@ -18,6 +18,7 @@ export function extractFixedCode(aiResponse: string): string | null {
   const end = aiResponse.indexOf(endTag);
 
   if (start === -1 || end === -1) return null;
+
   return aiResponse.slice(start + startTag.length, end).trim();
 }
 
@@ -35,11 +36,13 @@ export async function promptConfirmation(
     });
     prompt.focus();
   });
+
   return answer.toLowerCase() === "y";
 }
 
 export function highlightChanges(original: string, fixed: string): string {
   const diff = createPatch("file", original, fixed, "", "");
+
   return (parsePatch(diff)[0] as ParsedDiff).hunks
     .map((hunk: { lines: string[] }) =>
       hunk.lines
@@ -71,10 +74,10 @@ export async function applyAiFixes(
 async function identifyFixableFiles(config: Config): Promise<string[]> {
   return fastGlob(["**/*.{ts,js,py,java}"], {
     cwd: process.cwd(),
-    ignore: ["**/node_modules/**", ...config.testFilePattern],
+    ignore: config.sourceFilePattern,
     absolute: false,
     onlyFiles: true,
-  }).then((files) => files.slice(0, 50));
+  }).then((files) => files.slice(0, MAX_FILES_TO_FIX));
 }
 
 async function processFileFix(
@@ -86,7 +89,11 @@ async function processFileFix(
   const originalContent = await fs.promises.readFile(fullPath, "utf8");
 
   const messages = createFixMessages(filePath, originalContent, config);
-  const aiResponse = await streamAIResponse(config, messages);
+  const aiResponse = await streamAIResponse({
+    api: apis.FIREWORKS,
+    config,
+    messages,
+  });
   const fixedContent = extractFixedCode(aiResponse);
 
   if (!fixedContent || fixedContent === originalContent) {
@@ -155,9 +162,9 @@ export async function analyzeTestFailure(
   const messages: Message[] = [
     {
       role: "system",
-      content: config.systemPromptFile
-        ? fs.existsSync(config.systemPromptFile)
-          ? fs.readFileSync(config.systemPromptFile, "utf8")
+      content: config.systemPrompt
+        ? fs.existsSync(config.systemPrompt)
+          ? fs.readFileSync(config.systemPrompt, "utf8")
           : DEFAULT_PROMPT
         : DEFAULT_PROMPT,
     },
@@ -173,5 +180,10 @@ export async function analyzeTestFailure(
   ];
 
   ui.appendReasoningLog("Analyzing test failures...\n");
-  return streamAIResponse(config, messages);
+  return streamAIResponse({
+    api: apis.DEEPSEEK,
+    config,
+    messages,
+    appendReasoningMessages: true,
+  });
 }
