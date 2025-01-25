@@ -1,6 +1,6 @@
 {
   "name": "askds",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "description": "",
   "main": "dist/index.js",
   "bin": {
