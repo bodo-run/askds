@@ -84,6 +84,13 @@ async function identifyFixableFiles(analysis?: string): Promise<FileFix[]> {
   const files =
     analysis
       ?.split("\n")
+      .flatMap((line) => {
+        // Handle cases where FIX_END_TAG and FILE_PATH_TAG are on same line
+        if (line.includes(FIX_END_TAG) && line.includes(FILE_PATH_TAG)) {
+          return line.replace(FIX_END_TAG, FIX_END_TAG + "\n").split("\n");
+        }
+        return [line];
+      })
       .map((line) => line.trim())
       .reduce((acc, line) => {
         const last = acc.at(-1);
