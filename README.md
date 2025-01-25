@@ -1,4 +1,4 @@
-import { it, expect, describe } from "vitest";
+# `askds` - DeepSeek R1-powered test debugger
 
 `askds` is a test debugger that helps diagnose test failures using DeepSeek R1. It runs your tests, analyzes failures, and suggests fixes.
 
