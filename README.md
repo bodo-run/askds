@@ -53,3 +53,11 @@ Command line options:
 ```bash
 askai npm test
 ```
+
+## Experimental Fixing
+
+```bash
+askds --fix npm test
+```
+
+You will need to have a Fireworks AI API key set under `FIREWORKS_API_KEY`.

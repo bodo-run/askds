@@ -128,7 +128,7 @@ async function processFileFix(
   const originalContent = await fs.promises.readFile(fullPath, "utf8");
 
   const messages = createFixMessages(file, originalContent, config);
-  ui.appendOutputLog(`Asking AI to fix ${file.filePath}...`);
+  ui.appendOutputLog(chalk.bold(`Asking AI to fix ${file.filePath}...`));
   const aiResponse = await streamAIResponse({
     api: apis.FIREWORKS,
     config,
