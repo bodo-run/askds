@@ -79,8 +79,10 @@ type FileFix = {
   fixedCode: string;
   isComplete: boolean;
 };
-async function identifyFixableFiles(analysis?: string): Promise<FileFix[]> {
-  console.log(analysis);
+
+export async function identifyFixableFiles(
+  analysis?: string
+): Promise<FileFix[]> {
   const files =
     analysis
       ?.split("\n")
@@ -99,8 +101,13 @@ async function identifyFixableFiles(analysis?: string): Promise<FileFix[]> {
         const isFixEnd = line.startsWith(FIX_END_TAG);
 
         if (isFilePath) {
+          let filePath = line.slice(FILE_PATH_TAG.length);
+          // remove leading slash, no absolute paths
+          if (filePath.startsWith("/")) {
+            filePath = filePath.slice(1);
+          }
           acc.push({
-            filePath: line.slice(FILE_PATH_TAG.length),
+            filePath,
             isComplete: false,
             fixedCode: "",
           });

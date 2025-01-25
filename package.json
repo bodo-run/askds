@@ -15,6 +15,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "vitest --watch=false",
+    "test:unit": "vitest run src/__tests__/fix-parser.test.ts",
     "prepublish": "npm run build"
   },
   "keywords": [],
