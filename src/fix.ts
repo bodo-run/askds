@@ -151,7 +151,7 @@ async function processFileFix(
   ui.appendOutputLog(`Writing fixed content to ${file.filePath}...`);
 
   // always add a new line at the end of the file if it doesn't already have one
-  await fs.promises.writeFile(
+  fs.writeFileSync(
     fullPath,
     fixedContent + (fixedContent.endsWith("\n") ? "" : "\n"),
     "utf8"
