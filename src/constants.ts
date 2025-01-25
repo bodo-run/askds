@@ -13,7 +13,7 @@ export const DEFAULT_PROMPT = [
 
 export const FIX_PROMPT = [
   "Suggest only one solution and not multiple solutions.",
-  `Output fixes in this format: ${FILE_PATH_TAG}<file_path>\n${FIX_START_TAG}\n<fixed_code>\n${FIX_END_TAG}\n`,
+  `Output fixes in this format: ${FILE_PATH_TAG}<file_path>\n${FIX_START_TAG}\n<fixed_code>\n${FIX_END_TAG}\n\n\n`,
 ].join("\n");
 
 export const DEFAULT_TEST_FILE_PATTERN = [
