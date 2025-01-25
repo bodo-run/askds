@@ -20,9 +20,6 @@ importers:
       fast-glob:
         specifier: ^3.3.3
         version: 3.3.3
-      glob-to-regexp:
-        specifier: ^0.4.1
-        version: 0.4.1
       ink:
         specifier: ^4.4.1
         version: 4.4.1(@types/react@19.0.8)(react@18.3.1)
@@ -42,9 +39,6 @@ importers:
       '@types/diff':
         specifier: ^7.0.0
         version: 7.0.0
-      '@types/glob-to-regexp':
-        specifier: ^0.4.4
-        version: 0.4.4
       '@types/ink':
         specifier: ^2.0.3
         version: 2.0.3(@types/react@19.0.8)(react@18.3.1)
@@ -486,9 +480,6 @@ packages:
   '@types/estree@1.0.6':
     resolution: {integrity: sha512-AYnb1nQyY49te+VRAVgmzfcgjYS91mY5P0TKUDCLEM+gNnA+3T6rWITXRLYCpahpqSQbN5cE+gHpnPyXjHWxcw==}
 
-  '@types/glob-to-regexp@0.4.4':
-    resolution: {integrity: sha512-nDKoaKJYbnn1MZxUY0cA1bPmmgZbg0cTq7Rh13d0KWYNOiKbqoR+2d89SnRPszGh7ROzSwZ/GOjZ4jPbmmZ6Eg==}
-
   '@types/ink@2.0.3':
     resolution: {integrity: sha512-DYKIKEJqhsGfQ/jgX0t9BzfHmBJ/9dBBT2MDsHAQRAfOPhEe7LZm5QeNBx1J34/e108StCPuJ3r4bh1y38kCJA==}
     deprecated: This is a stub types definition. ink provides its own type definitions, so you do not need this installed.
@@ -711,9 +702,6 @@ packages:
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
-
-  glob-to-regexp@0.4.1:
-    resolution: {integrity: sha512-lkX1HJXwyMcprw/5YUZc2s7DrpAiHB21/V+E1rHUrVNokkvB6bqMzT0VfV6/86ZNabt1k14YOIaT7nDvOX3Iiw==}
 
   humanize-ms@1.2.1:
     resolution: {integrity: sha512-Fl70vYtsAFb/C06PTS9dZBo7ihau+Tu/DNCk/OyHhea07S+aeMWpFFkUaXRa8fI+ScZbEI8dfSxwY7gxZ9SAVQ==}
@@ -1323,8 +1311,6 @@ snapshots:
 
   '@types/estree@1.0.6': {}
 
-  '@types/glob-to-regexp@0.4.4': {}
-
   '@types/ink@2.0.3(@types/react@19.0.8)(react@18.3.1)':
     dependencies:
       ink: 4.4.1(@types/react@19.0.8)(react@18.3.1)
@@ -1582,8 +1568,6 @@ snapshots:
   glob-parent@5.1.2:
     dependencies:
       is-glob: 4.0.3
-
-  glob-to-regexp@0.4.1: {}
 
   humanize-ms@1.2.1:
     dependencies:

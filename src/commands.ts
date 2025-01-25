@@ -4,7 +4,6 @@ import path from "node:path";
 import process from "node:process";
 
 import fastGlob from "fast-glob";
-import globToRegexp from "glob-to-regexp";
 
 import { Config } from "./types.js";
 import { ui } from "./ui.js";
@@ -112,67 +111,31 @@ export function findTestFiles(output: string, config: Config): string[] {
   const matchedFiles = new Set<string>();
   const cwd = process.cwd();
 
-  // 1. Convert test file patterns to regex patterns without anchors
-  const testFileRegexes = config.testFilePattern.map((pattern) => {
-    const regex = globToRegexp(pattern, {
-      globstar: true,
-      extended: true,
-      flags: "i",
-    });
-
-    // Remove ^/$ anchors to match anywhere in line
-    const source = regex.source.replace(/^\^/, "").replace(/\$$/, "");
-
-    return new RegExp(source, regex.flags);
-  });
-
-  // 2. Scan each output line for matching paths
-  output.split("\n").forEach((line) => {
-    testFileRegexes.forEach((regex) => {
-      const matches = line.match(regex);
-      if (matches?.[0]) {
-        const matchedPath = matches[0];
-
-        // Try both relative and absolute paths
-        const pathsToCheck = [matchedPath, path.join(cwd, matchedPath)];
-
-        for (const filePath of pathsToCheck) {
-          if (fs.existsSync(filePath)) {
-            matchedFiles.add(path.relative(cwd, filePath));
-            break;
-          }
-        }
-      }
-    });
-  });
-
-  // 3. Fallback to pattern matching if no explicit matches found
-  if (matchedFiles.size === 0) {
-    const allTestFiles = fastGlob.sync(config.testFilePattern, {
+  const testFiles = fastGlob
+    .sync(config.testFilePattern, {
       cwd,
-      absolute: false,
       ignore: ["**/node_modules/**"],
-    });
+    })
+    .map((file) => file.replace(cwd, ""))
+    .map((file) => file.replace(/^\//, ""));
 
-    allTestFiles.forEach((file) => {
-      if (output.includes(file)) {
-        matchedFiles.add(file);
+  const outputLines = output.split("\n");
+
+  const foundTestFiles = [];
+
+  for (const testFile of testFiles) {
+    for (const line of outputLines) {
+      if (line.includes(testFile)) {
+        foundTestFiles.push(testFile);
       }
-    });
+    }
   }
 
-  if (config.debug) {
-    ui.appendOutputLog(
-      [
-        `Test file detection results:`,
-        `- Output lines scanned: ${output.split("\n").length}`,
-        `- Patterns used: ${config.testFilePattern.join(", ")}`,
-        `- Matched files: ${Array.from(matchedFiles).join(", ") || "none"}\n`,
-      ].join("\n")
-    );
-  }
+  ui.appendOutputLog(
+    `\nFound ${foundTestFiles.length.toLocaleString()} test files referenced in test output. Will include them in the context.\n\n`
+  );
 
-  return Array.from(matchedFiles);
+  return foundTestFiles;
 }
 
 export async function getGitDiff(config: Config): Promise<string> {
