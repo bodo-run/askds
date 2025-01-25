@@ -139,6 +139,10 @@ async function processFileFix(
   options: { autoApply?: boolean }
 ) {
   const fullPath = path.join(process.cwd(), file.filePath);
+  if (!fs.existsSync(fullPath)) {
+    ui.appendOutputLog(`${file.filePath} does not exist. Creating it...\n`);
+    fs.writeFileSync(fullPath, "", "utf8");
+  }
   const originalContent = await fs.promises.readFile(fullPath, "utf8");
 
   const messages = createFixMessages(file, originalContent, config);
