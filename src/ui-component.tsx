@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { logStore } from "./log-store.js";
 
-function justifyText(text: string, width: number): string[] {
+export function justifyText(text: string, width: number): string[] {
   if (text.length <= width) {
     return [text];
   }

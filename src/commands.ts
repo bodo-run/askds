@@ -131,11 +131,13 @@ export function findTestFiles(output: string, config: Config): string[] {
     }
   }
 
+  const uniqueFoundTestFiles = [...new Set(foundTestFiles)];
+
   ui.appendOutputLog(
-    `\nFound ${foundTestFiles.length.toLocaleString()} test files referenced in test output. Will include them in the context.\n\n`
+    `\nFound ${uniqueFoundTestFiles.length.toLocaleString()} test files referenced in test output. Will include them in the context.\n\n`
   );
 
-  return foundTestFiles;
+  return uniqueFoundTestFiles;
 }
 
 export async function getGitDiff(config: Config): Promise<string> {
