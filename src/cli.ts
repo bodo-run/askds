@@ -14,9 +14,8 @@ export const cli = program
   .description(packageJson.description)
   .argument("[test-command-and-args...]", "Test command to execute")
   .option(
-    "--run",
-    "Run this command. when using run [test-command-and-args...] is ignored",
-    false
+    "--run <command>",
+    "Run this command. when using run [test-command-and-args...] is ignored"
   )
   .option("--fix", "Automatically apply AI-suggested fixes", false)
   .option(
