@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { logStore } from "./log-store.js";
 
-// if lines are longer than width, justify them to multiple lines
 function justifyText(text: string, width: number): string[] {
   if (text.length <= width) {
     return [text];
@@ -13,7 +12,19 @@ function justifyText(text: string, width: number): string[] {
     if (line.length <= width) {
       return [line];
     }
-    return [line.slice(0, width), ...justifyText(line.slice(width), width)];
+    // Find the last space in the first 'width' characters
+    const firstChunk = line.slice(0, width);
+    const lastSpaceIndex = firstChunk.lastIndexOf(" ");
+    let splitIndex: number;
+    if (lastSpaceIndex === -1) {
+      splitIndex = width; // No space found, split at the width (may break a word)
+    } else {
+      splitIndex = lastSpaceIndex + 1; // Include the space in the first part
+    }
+    return [
+      line.slice(0, splitIndex),
+      ...justifyText(line.slice(splitIndex), width),
+    ];
   });
 }
 
@@ -27,13 +38,9 @@ const ScrollableBox: React.FC<{
   borderColor: string;
   height: number;
 }> = ({ title, items, borderColor, height }) => {
-  // Reserve space for the top line (title) and one line at the bottom/border
-  const contentHeight = Math.max(height - 2, 0);
-  const width = process.stdout.columns - 2; // 2 for the border
-
+  const width = process.stdout.columns - 4; // 4 for the border
   const justifiedItems = items.flatMap((item) => justifyText(item, width));
-  // Show only the last `contentHeight` lines
-  const visibleLines = justifiedItems.slice(-contentHeight);
+  const visibleLines = justifiedItems.slice(-height - 3);
 
   return (
     <Box
@@ -68,7 +75,7 @@ export const TerminalUI = () => {
   const terminalHeight = process.stdout.rows;
 
   // Some space for padding / instructions line:
-  const availableHeight = Math.max(terminalHeight - 2, 6);
+  const availableHeight = Math.max(terminalHeight - 1, 6);
 
   // Split the available space for the two boxes
   const halfHeight = Math.floor(availableHeight / 2);
