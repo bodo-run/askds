@@ -10,6 +10,14 @@ import { Config } from "./types.js";
 import { ui } from "./ui.js";
 
 export function loadConfig(testCommandAndArgs: string[], options: any): Config {
+  options.timeout = Number.parseInt(options.timeout, 10) * 1000;
+  if (options.run) {
+    return {
+      ...options,
+      testCommand: options.run,
+    };
+  }
+
   const testCommand = testCommandAndArgs.join(" ");
 
   if (!testCommand) {
@@ -20,7 +28,6 @@ export function loadConfig(testCommandAndArgs: string[], options: any): Config {
   return {
     ...options,
     testCommand,
-    timeout: Number.parseInt(options.timeout, 10) * 1000,
   };
 }
 
@@ -68,7 +75,7 @@ export async function runTestCommand(
   const [cmd, ...args] = testCommand.split(/\s+/);
   try {
     if (config.debug) {
-      ui.appendOutputLog(`Running test command: ${testCommand}`);
+      ui.appendOutputLog(`Running test command: ${testCommand}\n`);
     }
 
     const output = await executeCommand(cmd, args, {
@@ -76,7 +83,9 @@ export async function runTestCommand(
       onData: (data) => {
         ui.appendOutputLog(data);
         if (config.debug) {
-          ui.appendReasoningLog(`Received ${data.length} bytes from tests...`);
+          ui.appendReasoningLog(
+            `Received ${data.length} bytes from tests...\n`
+          );
         }
       },
     });
@@ -94,7 +103,7 @@ export async function serializeRepository(
   const [cmd, ...args] = command.split(/\s+/);
   const result = await executeCommand(cmd, args);
   if (config.debug) {
-    ui.appendOutputLog(`Serialized repository size: ${result.length}`);
+    ui.appendOutputLog(`Serialized repository size: ${result.length}\n`);
   }
   return result;
 }
@@ -158,7 +167,7 @@ export function findTestFiles(output: string, config: Config): string[] {
         `Test file detection results:`,
         `- Output lines scanned: ${output.split("\n").length}`,
         `- Patterns used: ${config.testFilePattern.join(", ")}`,
-        `- Matched files: ${Array.from(matchedFiles).join(", ") || "none"}`,
+        `- Matched files: ${Array.from(matchedFiles).join(", ") || "none"}\n`,
       ].join("\n")
     );
   }
@@ -170,7 +179,7 @@ export async function getGitDiff(config: Config): Promise<string> {
   try {
     const diff = execSync("git diff --staged", { stdio: "pipe" }).toString();
     if (config.debug) {
-      ui.appendOutputLog(`Git Diff:\n${diff}`);
+      ui.appendOutputLog(`Git Diff:\n${diff}\n`);
     }
     return diff;
   } catch (error) {
@@ -178,7 +187,7 @@ export async function getGitDiff(config: Config): Promise<string> {
       ui.appendOutputLog(
         `Git Diff Error: ${
           error instanceof Error ? error.message : String(error)
-        }`
+        }\n`
       );
     }
     return "";

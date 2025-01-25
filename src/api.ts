@@ -78,7 +78,7 @@ export async function streamAIResponse({
           ui.appendOutputLog(
             `[${api.name}] Received ${chunkCount} chunks. ` +
               `Content: ${contentChunk.length}b, ` +
-              `Reasoning: ${reasoningChunk.length}b`
+              `Reasoning: ${reasoningChunk.length}b\n`
           );
         }
 

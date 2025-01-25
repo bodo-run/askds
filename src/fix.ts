@@ -66,7 +66,7 @@ export async function applyAiFixes(
 ): Promise<boolean> {
   const filesToFix = await identifyFixableFiles(options.analysis);
 
-  ui.appendOutputLog(`Fixing ${filesToFix.length} files...`);
+  ui.appendOutputLog(`Fixing ${filesToFix.length} files...\n`);
 
   const results = await Promise.all(
     filesToFix.map((file) => processFileFix(file, config, options))
@@ -128,7 +128,7 @@ async function processFileFix(
   const originalContent = await fs.promises.readFile(fullPath, "utf8");
 
   const messages = createFixMessages(file, originalContent, config);
-  ui.appendOutputLog(chalk.bold(`Asking AI to fix ${file.filePath}...`));
+  ui.appendOutputLog(chalk.bold(`Asking AI to fix ${file.filePath}...\n`));
   const aiResponse = await streamAIResponse({
     api: apis.FIREWORKS,
     config,
@@ -148,7 +148,7 @@ async function processFileFix(
     if (!confirmed) return false;
   }
 
-  ui.appendOutputLog(`Writing fixed content to ${file.filePath}...`);
+  ui.appendOutputLog(`Writing fixed content to ${file.filePath}...\n`);
 
   // always add a new line at the end of the file if it doesn't already have one
   fs.writeFileSync(
@@ -206,13 +206,13 @@ export async function analyzeTestFailure(
 
   if (testFiles.length === 0) {
     ui.appendOutputLog(
-      `\n{WARN} No test files found matching failure ${config.testFilePattern}`
+      `\n{WARN} No test files found matching failure ${config.testFilePattern}\n`
     );
     ui.appendOutputLog(
-      "You can specify test file patterns with --test-file-pattern"
+      "You can specify test file patterns with --test-file-pattern\n"
     );
     ui.appendOutputLog(
-      "Moving forward without having any test files anyways..."
+      "Moving forward without having any test files anyways...\n"
     );
   }
 

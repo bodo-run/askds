@@ -13,6 +13,11 @@ export const cli = program
   .version(packageJson.version)
   .description(packageJson.description)
   .argument("[test-command-and-args...]", "Test command to execute")
+  .option(
+    "--run",
+    "Run this command. when using run [test-command-and-args...] is ignored",
+    false
+  )
   .option("--fix", "Automatically apply AI-suggested fixes", false)
   .option(
     "--auto-apply",

@@ -31,15 +31,16 @@ Set these environment variables to customize behavior:
 
 Command line options:
 
-| Flag                    | Description                   | Default        |
-| ----------------------- | ----------------------------- | -------------- |
-| `--test-file-pattern`   | Glob pattern for test files   | `**/*.test.ts` |
-| `--source-file-pattern` | Glob pattern for source files | `src/**/*.ts`  |
-| `--serialize`           | Repository serialization cmd  | `yek`          |
-| `--debug`               | Enable debug mode             | `false`        |
-| `--hide-ui`             | Hide UI                       | `false`        |
-| `--system-prompt`       | Custom system prompt file     | -              |
-| `--timeout`             | Timeout for AI response       | `120`          |
+| Flag                    | Description                                                            | Default        |
+| ----------------------- | ---------------------------------------------------------------------- | -------------- |
+| `--test-file-pattern`   | Glob pattern for test files                                            | `**/*.test.ts` |
+| `--source-file-pattern` | Glob pattern for source files                                          | `src/**/*.ts`  |
+| `--serialize`           | Repository serialization cmd                                           | `yek`          |
+| `--debug`               | Enable debug mode                                                      | `false`        |
+| `--hide-ui`             | Hide UI                                                                | `false`        |
+| `--system-prompt`       | Custom system prompt file                                              | -              |
+| `--timeout`             | Timeout for AI response                                                | `120`          |
+| `--run`                 | Run this command. when using run [test-command-and-args...] is ignored | `false`        |
 
 ## How It Works
 
