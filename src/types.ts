@@ -56,8 +56,6 @@ export interface Config {
   testOutput?: string;
   /** Optional repository structure information */
   repoStructure?: string;
-  /** Whether to use cache */
-  cache?: boolean;
   /** Maximum file size in bytes */
   maxSize?: number;
 }
