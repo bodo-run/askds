@@ -30,6 +30,7 @@ export async function executeCommand(
   options: {
     shell: boolean;
     onData?: (data: string) => void;
+    onEnd?: () => void;
   } = {
     shell: true,
   }
@@ -52,6 +53,7 @@ export async function executeCommand(
     proc.stderr.on("data", handleData);
 
     proc.on("close", (code) => {
+      options.onEnd?.();
       code === 0
         ? resolve(output)
         : reject(new Error(`Command failed with code ${code}\n${output}`));
@@ -72,7 +74,7 @@ export async function runTestCommand(
     const output = await executeCommand(cmd, args, {
       shell: true,
       onData: (data) => {
-        ui.appendOutputLog(`${data}\n`);
+        ui.appendOutputLog(data);
         if (config.debug) {
           ui.appendReasoningLog(`Received ${data.length} bytes from tests...`);
         }
