@@ -25,12 +25,13 @@ export const cli = program
   .option("--hide-reasoning", "Hide reasoning UI", false)
   .option("--timeout <seconds>", "Timeout for AI response", "120")
   .option(
-    "--test-file-pattern <pattern>",
+    "--test-file-pattern <patterns...>",
     "Glob pattern for test files",
     DEFAULT_TEST_FILE_PATTERN
   )
-  .option("--source-file-pattern <pattern>", "Glob pattern for source files", [
-    "**/*",
-    ...DEFAULT_TEST_FILE_PATTERN.map((p) => `!${p}`),
-  ])
+  .option(
+    "--source-file-pattern <patterns...>",
+    "Glob pattern for source files",
+    ["**/*", ...DEFAULT_TEST_FILE_PATTERN.map((p) => `!${p}`)]
+  )
   .showHelpAfterError();
