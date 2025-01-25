@@ -15,23 +15,23 @@ export const cli = program
   .argument("[test-command-and-args...]", "Test command to execute")
   .option("--fix", "Automatically apply AI-suggested fixes", false)
   .option(
-    "--interactive",
-    "Confirm each change before applying (requires --fix)",
-    true
+    "--auto-apply",
+    "Automatically apply AI-suggested fixes (requires --fix)",
+    false
   )
   .option("--debug", "Enable debug mode", false)
   .option("--serialize <command>", "Repository serialization command", "yek")
   .option("--system-prompt <file>", "Path to system prompt file")
   .option("--hide-reasoning", "Hide reasoning UI", false)
+  .option("--cache", "Enable cache", false)
   .option("--timeout <seconds>", "Timeout for AI response", "120")
   .option(
     "--test-file-pattern <pattern>",
     "Glob pattern for test files",
     DEFAULT_TEST_FILE_PATTERN
   )
-  .option(
-    "--source-file-pattern <pattern>",
-    "Glob pattern for source files",
-    DEFAULT_TEST_FILE_PATTERN.map((p) => `!${p}`)
-  )
+  .option("--source-file-pattern <pattern>", "Glob pattern for source files", [
+    "**/*",
+    ...DEFAULT_TEST_FILE_PATTERN.map((p) => `!${p}`),
+  ])
   .showHelpAfterError();

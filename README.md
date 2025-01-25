@@ -1,7 +1,6 @@
-# `askds` - DeepSeek R1-powered test debugger
+import { it, expect, describe } from "vitest";
 
 `askds` is a test debugger that helps diagnose test failures using DeepSeek R1. It runs your tests, analyzes failures, and suggests fixes.
-
 
 [Screencast](https://github.com/user-attachments/assets/477e92e2-6701-4138-8ffb-c910ef61571e)
 
@@ -22,14 +21,13 @@ export DEEPSEEK_API_KEY="your-api-key"
 askds npm test
 ```
 
-
 ## Configuration
 
 Set these environment variables to customize behavior:
 
-| Variable               | Description                         | Default |
-| ---------------------- | ----------------------------------- | ------- |
-| `DEEPSEEK_API_KEY`     | Required API key                    | -       |
+| Variable           | Description      | Default |
+| ------------------ | ---------------- | ------- |
+| `DEEPSEEK_API_KEY` | Required API key | -       |
 
 Command line options:
 
@@ -48,7 +46,6 @@ Command line options:
 2. Analyzes failures + repo content using Deepseek R1
 3. Prints the solution/suggestion
 
-
 ## Examples
 
 ### Basic Test Analysis
@@ -56,4 +53,3 @@ Command line options:
 ```bash
 askai npm test
 ```
-

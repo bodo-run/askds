@@ -15,10 +15,10 @@ export const apis = {
   FIREWORKS: {
     name: "Fireworks",
     endpoint: "https://api.fireworks.ai/inference/v1",
-    model: "fast-apply-7b-v1.0",
+    model: "accounts/me-63642b/deployedModels/fast-apply-de5bd7ca",
     apiKey: process.env.FIREWORKS_AI_API_KEY,
     maxTokens: 4096,
-    temperature: 0.01,
+    temperature: 0.6,
   },
 } as const;
 

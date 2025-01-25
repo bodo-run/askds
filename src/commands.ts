@@ -6,7 +6,6 @@ import process from "node:process";
 import fastGlob from "fast-glob";
 import globToRegexp from "glob-to-regexp";
 
-import { analyzeTestFailure, applyAiFixes } from "./fix.js";
 import { Config } from "./types.js";
 import { ui } from "./ui.js";
 
@@ -73,7 +72,7 @@ export async function runTestCommand(
     const output = await executeCommand(cmd, args, {
       shell: true,
       onData: (data) => {
-        ui.appendOutputLog(data);
+        ui.appendOutputLog(`${data}\n`);
         if (config.debug) {
           ui.appendReasoningLog(`Received ${data.length} bytes from tests...`);
         }
@@ -194,11 +193,4 @@ export async function loadRepoData(config: Config) {
     testOutput,
     gitDiff,
   }));
-}
-
-interface RunTestAndFixParams {
-  config: Config;
-  testOutput: string;
-  repoStructure: string;
-  gitDiff: string;
 }

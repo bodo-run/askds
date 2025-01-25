@@ -1,15 +1,20 @@
-import blessed from "blessed";
 import { createPatch, ParsedDiff } from "diff";
-import fastGlob from "fast-glob";
+import prompts from "prompts";
 import fs from "node:fs";
 import path from "node:path";
-
+import chalk from "chalk";
 import { parsePatch } from "diff";
-import { streamAIResponse, apis } from "./api";
-import { findTestFiles } from "./commands";
-import { DEFAULT_PROMPT, MAX_FILES_TO_FIX } from "./constants";
-import { Config, Message } from "./types";
-import { ui } from "./ui";
+import { streamAIResponse, apis } from "./api.js";
+import { findTestFiles } from "./commands.js";
+import {
+  DEFAULT_PROMPT,
+  FIX_PROMPT,
+  FILE_PATH_TAG,
+  FIX_END_TAG,
+  FIX_START_TAG,
+} from "./constants.js";
+import { Config, Message } from "./types.js";
+import { ui } from "./ui.js";
 
 export function extractFixedCode(aiResponse: string): string | null {
   const startTag = "<updated-code>";
@@ -26,18 +31,17 @@ export async function promptConfirmation(
   filePath: string,
   original: string,
   fixed: string
-): Promise<boolean> {
-  console.log(`\nChanges for ${filePath}:`);
+) {
+  console.clear();
+  console.log(chalk.bold(filePath));
   console.log(highlightChanges(original, fixed));
-  const answer = await new Promise<string>((resolve) => {
-    const prompt = blessed.prompt({
-      text: "Apply these changes? (y/N)",
-      onSubmit: (value: string) => resolve(value || "n"),
-    });
-    prompt.focus();
+  const response = await prompts({
+    type: "confirm",
+    name: "confirm",
+    message: chalk.bold(chalk.green("Apply changes?")),
   });
 
-  return answer.toLowerCase() === "y";
+  return response.confirm;
 }
 
 export function highlightChanges(original: string, fixed: string): string {
@@ -58,66 +62,109 @@ export function highlightChanges(original: string, fixed: string): string {
 
 export async function applyAiFixes(
   config: Config,
-  options: { interactive?: boolean }
+  options: { autoApply?: boolean; analysis?: string }
 ): Promise<boolean> {
-  const filesToFix = await identifyFixableFiles(config);
+  const filesToFix = await identifyFixableFiles(options.analysis);
 
-  let success = true;
-  for (const file of filesToFix) {
-    const fixResult = await processFileFix(file, config, options);
-    if (!fixResult) success = false;
-  }
+  ui.appendOutputLog(`Fixing ${filesToFix.length} files...`);
 
-  return success;
+  const results = await Promise.all(
+    filesToFix.map((file) => processFileFix(file, config, options))
+  );
+
+  return results.every((result) => result === true);
 }
+type FileFix = {
+  filePath: string;
+  fixedCode: string;
+  isComplete: boolean;
+};
+async function identifyFixableFiles(analysis?: string): Promise<FileFix[]> {
+  console.log(analysis);
+  const files =
+    analysis
+      ?.split("\n")
+      .map((line) => line.trim())
+      .reduce((acc, line) => {
+        const last = acc.at(-1);
+        const isFilePath = line.startsWith(FILE_PATH_TAG);
+        const isFixStart = line.startsWith(FIX_START_TAG);
+        const isFixEnd = line.startsWith(FIX_END_TAG);
 
-async function identifyFixableFiles(config: Config): Promise<string[]> {
-  return fastGlob(["**/*.{ts,js,py,java}"], {
-    cwd: process.cwd(),
-    ignore: config.sourceFilePattern,
-    absolute: false,
-    onlyFiles: true,
-  }).then((files) => files.slice(0, MAX_FILES_TO_FIX));
+        if (isFilePath) {
+          acc.push({
+            filePath: line.slice(FILE_PATH_TAG.length),
+            isComplete: false,
+            fixedCode: "",
+          });
+          return acc;
+        }
+        if (isFixStart && last) {
+          last.fixedCode = "";
+          return acc;
+        }
+        if (isFixEnd && last) {
+          last.isComplete = true;
+          return acc;
+        }
+        if (last && !last.isComplete) {
+          last.fixedCode += line;
+          return acc;
+        }
+        return acc;
+      }, [] as FileFix[]) || [];
+
+  return files
+    .filter((file) => file.isComplete)
+    .filter((file) => file.filePath);
 }
 
 async function processFileFix(
-  filePath: string,
+  file: FileFix,
   config: Config,
-  options: { interactive?: boolean }
+  options: { autoApply?: boolean }
 ) {
-  const fullPath = path.join(process.cwd(), filePath);
+  const fullPath = path.join(process.cwd(), file.filePath);
   const originalContent = await fs.promises.readFile(fullPath, "utf8");
 
-  const messages = createFixMessages(filePath, originalContent, config);
+  const messages = createFixMessages(file, originalContent, config);
+  ui.appendOutputLog(`Asking AI to fix ${file.filePath}...`);
   const aiResponse = await streamAIResponse({
     api: apis.FIREWORKS,
     config,
     messages,
   });
   const fixedContent = extractFixedCode(aiResponse);
-
   if (!fixedContent || fixedContent === originalContent) {
     return false;
   }
 
-  if (options.interactive) {
+  if (!options.autoApply) {
     const confirmed = await promptConfirmation(
-      filePath,
+      file.filePath,
       originalContent,
       fixedContent
     );
     if (!confirmed) return false;
   }
 
-  await fs.promises.writeFile(fullPath, fixedContent, "utf8");
+  ui.appendOutputLog(`Writing fixed content to ${file.filePath}...`);
+
+  // always add a new line at the end of the file if it doesn't already have one
+  await fs.promises.writeFile(
+    fullPath,
+    fixedContent + (fixedContent.endsWith("\n") ? "" : "\n"),
+    "utf8"
+  );
   return true;
 }
 
 function createFixMessages(
-  filePath: string,
+  file: FileFix,
   content: string,
   config: Config
 ): Message[] {
+  const currentContent = fs.readFileSync(file.filePath, "utf8");
   return [
     {
       role: "system",
@@ -126,13 +173,27 @@ function createFixMessages(
     {
       role: "user",
       content: [
-        `File: ${filePath}`,
-        `Current content:\n${content}`,
-        `Test failures:\n${config.testOutput}`,
-        `Repository context:\n${config.repoStructure}`,
+        `File: ${file.filePath}`,
+        `Current content:\n${currentContent}`,
+        `Fix:\n${file.fixedCode}`,
       ].join("\n\n"),
     },
   ];
+}
+
+function getPrompt(config: Config): string {
+  let systemPrompt = config.systemPrompt;
+
+  if (systemPrompt && fs.existsSync(systemPrompt)) {
+    systemPrompt = fs.readFileSync(systemPrompt, "utf8");
+  } else {
+    systemPrompt = DEFAULT_PROMPT;
+  }
+
+  if (config.fix) {
+    return [systemPrompt, FIX_PROMPT].join("\n");
+  }
+  return systemPrompt;
 }
 
 export async function analyzeTestFailure(
@@ -162,11 +223,7 @@ export async function analyzeTestFailure(
   const messages: Message[] = [
     {
       role: "system",
-      content: config.systemPrompt
-        ? fs.existsSync(config.systemPrompt)
-          ? fs.readFileSync(config.systemPrompt, "utf8")
-          : DEFAULT_PROMPT
-        : DEFAULT_PROMPT,
+      content: getPrompt(config),
     },
     {
       role: "user",

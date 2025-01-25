@@ -39,7 +39,7 @@ export interface Config {
   /** Command to serialize test output */
   serialize: string;
   /** Optional path to system prompt file */
-  systemPrompt: string;
+  systemPrompt?: string;
   /** Whether to hide reasoning in output */
   hideReasoning: boolean;
   /** Glob patterns for test files */
@@ -50,12 +50,16 @@ export interface Config {
   timeout: number;
   /** Whether to apply fixes */
   fix: boolean;
-  /** Whether to run in interactive mode */
-  interactive: boolean;
+  /** Whether to automatically apply fixes */
+  autoApply: boolean;
   /** Optional test output capture */
   testOutput?: string;
   /** Optional repository structure information */
   repoStructure?: string;
+  /** Whether to use cache */
+  cache?: boolean;
+  /** Maximum file size in bytes */
+  maxSize?: number;
 }
 
 /**
