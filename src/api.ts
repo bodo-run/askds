@@ -85,10 +85,8 @@ export async function streamAIResponse({
         fullContent += contentChunk;
         fullReasoning += reasoningChunk;
 
-        if (!config.hideReasoning) {
-          const displayText = reasoningChunk || contentChunk;
-          ui.appendReasoningLog(displayText);
-        }
+        const displayText = reasoningChunk || contentChunk;
+        ui.appendReasoningLog(displayText);
       }
 
       return fullContent || fullReasoning;

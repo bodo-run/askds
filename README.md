@@ -37,8 +37,9 @@ Command line options:
 | `--source-file-pattern` | Glob pattern for source files | `src/**/*.ts`  |
 | `--serialize`           | Repository serialization cmd  | `yek`          |
 | `--debug`               | Enable debug mode             | `false`        |
-| `--hide-reasoning`      | Hide AI reasoning             | `false`        |
+| `--hide-ui`             | Hide UI                       | `false`        |
 | `--system-prompt`       | Custom system prompt file     | -              |
+| `--timeout`             | Timeout for AI response       | `120`          |
 
 ## How It Works
 

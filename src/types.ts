@@ -40,8 +40,8 @@ export interface Config {
   serialize: string;
   /** Optional path to system prompt file */
   systemPrompt?: string;
-  /** Whether to hide reasoning in output */
-  hideReasoning: boolean;
+  /** Whether to hide UI */
+  hideUi: boolean;
   /** Glob patterns for test files */
   testFilePattern: string[];
   /** Glob patterns for source files */

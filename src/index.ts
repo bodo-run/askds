@@ -16,7 +16,7 @@ cli.action(async (testCommandAndArgs: string[], options: Config) => {
   const config = loadConfig(testCommandAndArgs, options);
 
   // Initialize UI before starting commands
-  if (!config.hideReasoning) {
+  if (!config.hideUi) {
     ui.initialize();
   }
 

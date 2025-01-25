@@ -34,7 +34,7 @@ export const ui = {
     if (isInitialized) {
       logStore.appendOutput(text);
     } else {
-      console.log(`[OUTPUT] ${text}`);
+      process.stdout.write(text);
     }
   },
 
@@ -42,7 +42,7 @@ export const ui = {
     if (isInitialized) {
       logStore.appendReasoning(text);
     } else {
-      console.log(`[REASONING] ${text}`);
+      process.stdout.write(text);
     }
   },
 

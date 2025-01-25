@@ -22,7 +22,7 @@ export const cli = program
   .option("--debug", "Enable debug mode", false)
   .option("--serialize <command>", "Repository serialization command", "yek")
   .option("--system-prompt <file>", "Path to system prompt file")
-  .option("--hide-reasoning", "Hide reasoning UI", false)
+  .option("--hide-ui", "Hide UI", false)
   .option("--timeout <seconds>", "Timeout for AI response", "120")
   .option(
     "--test-file-pattern <patterns...>",
