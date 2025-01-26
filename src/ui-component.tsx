@@ -1,32 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { logStore } from "./log-store.js";
-
-export function justifyText(text: string, width: number): string[] {
-  if (text.length <= width) {
-    return [text];
-  }
-
-  const lines = text.split("\n");
-  return lines.flatMap((line) => {
-    if (line.length <= width) {
-      return [line];
-    }
-    // Find the last space in the first 'width' characters
-    const firstChunk = line.slice(0, width);
-    const lastSpaceIndex = firstChunk.lastIndexOf(" ");
-    let splitIndex: number;
-    if (lastSpaceIndex === -1) {
-      splitIndex = width; // No space found, split at the width (may break a word)
-    } else {
-      splitIndex = lastSpaceIndex + 1; // Include the space in the first part
-    }
-    return [
-      line.slice(0, splitIndex),
-      ...justifyText(line.slice(splitIndex), width),
-    ];
-  });
-}
+import wrap from "word-wrap";
 
 /**
  * A scrollable box that shows the last `height - 2` lines of content,
@@ -39,7 +14,7 @@ const ScrollableBox: React.FC<{
   height: number;
 }> = ({ title, items, borderColor, height }) => {
   const width = process.stdout.columns - 4; // 4 for the border
-  const justifiedItems = items.flatMap((item) => justifyText(item, width));
+  const justifiedItems = items.flatMap((item) => wrap(item, { width }));
   const visibleLines = justifiedItems.slice(-height - 3);
 
   return (

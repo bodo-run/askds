@@ -16,7 +16,7 @@
     "dev": "tsx src/index.ts",
     "debug": "tsx --inspect src/index.ts",
     "test": "vitest --watch=false",
-    "test:unit": "vitest run src/__tests__/fix-parser.test.ts",
+    "test:unit": "vitest run src/",
     "prepublish": "npm run build"
   },
   "keywords": [],
@@ -35,13 +35,14 @@
   },
   "dependencies": {
     "chalk": "^5.4.1",
-    "prompts": "^2.4.2",
     "commander": "^13.1.0",
     "diff": "^5.1.0",
     "fast-glob": "^3.3.3",
     "ink": "^4.4.1",
     "openai": "^4.79.4",
+    "prompts": "^2.4.2",
     "react": "^18.3.1",
-    "react-reconciler": "^0.29.2"
+    "react-reconciler": "^0.29.2",
+    "word-wrap": "^1.2.5"
   }
 }

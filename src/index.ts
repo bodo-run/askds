@@ -37,12 +37,23 @@ cli.action(async (testCommandAndArgs: string[], options: Config) => {
       repoStructure,
     };
 
-    const success = await applyAiFixes(fixConfig, {
+    const results = await applyAiFixes(fixConfig, {
       autoApply: config.autoApply,
       analysis,
     });
 
-    process.exit(success ? 0 : 1);
+    const totalFilesFixed = results.filter(Boolean).length;
+    const appliedAnyFixes = totalFilesFixed > 0;
+
+    if (appliedAnyFixes) {
+      console.log(
+        `Fixed ${totalFilesFixed} files out of ${results.length} files.`
+      );
+    } else {
+      console.log("No fixes were applied.");
+    }
+
+    process.exit(appliedAnyFixes ? 0 : 1);
   } else {
     ui.destroy();
     process.stdout.write(analysis);

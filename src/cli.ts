@@ -26,8 +26,9 @@ export const cli = program
   .option("--debug", "Enable debug mode", false)
   .option("--serialize <command>", "Repository serialization command", "yek")
   .option("--system-prompt <file>", "Path to system prompt file")
+  .option("--fix-prompt <prompt>", "Fix instructions")
   .option("--hide-ui", "Hide UI", false)
-  .option("--timeout <seconds>", "Timeout for AI response", "120")
+  .option("--timeout <seconds>", "Timeout for AI response", "360")
   .option(
     "--test-file-pattern <patterns...>",
     "Glob pattern for test files",

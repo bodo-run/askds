@@ -40,6 +40,8 @@ export interface Config {
   serialize: string;
   /** Optional path to system prompt file */
   systemPrompt?: string;
+  /** Optional fix prompt */
+  fixPrompt?: string;
   /** Whether to hide UI */
   hideUi: boolean;
   /** Glob patterns for test files */

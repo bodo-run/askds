@@ -1,8 +1,5 @@
 import { execSync, spawn } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
 import process from "node:process";
-
 import fastGlob from "fast-glob";
 
 import { Config } from "./types.js";
@@ -107,37 +104,28 @@ export async function serializeRepository(
   return result;
 }
 
-export function findTestFiles(output: string, config: Config): string[] {
-  const matchedFiles = new Set<string>();
-  const cwd = process.cwd();
+export function findTestFiles(
+  output: string,
+  config: Config
+): string[] {
+  // Get test files from glob pattern
+  const testFiles = fastGlob.sync(config.testFilePattern, {
+    ignore: ["**/node_modules/**"],
+    absolute: false,
+    cwd: process.cwd(),
+  });
 
-  const testFiles = fastGlob
-    .sync(config.testFilePattern, {
-      cwd,
-      ignore: ["**/node_modules/**"],
-    })
-    .map((file) => file.replace(cwd, ""))
-    .map((file) => file.replace(/^\//, ""));
-
+  // Extract test files from output
   const outputLines = output.split("\n");
-
-  const foundTestFiles = [];
-
-  for (const testFile of testFiles) {
-    for (const line of outputLines) {
-      if (line.includes(testFile)) {
-        foundTestFiles.push(testFile);
-      }
-    }
-  }
-
-  const uniqueFoundTestFiles = [...new Set(foundTestFiles)];
-
-  ui.appendOutputLog(
-    `\nFound ${uniqueFoundTestFiles.length.toLocaleString()} test files referenced in test output. Will include them in the context.\n\n`
+  const matchedFiles = testFiles.filter((file) =>
+    outputLines.some((line) => line.includes(file))
   );
 
-  return uniqueFoundTestFiles;
+  ui.appendOutputLog(
+    `\nFound ${matchedFiles.length.toLocaleString()} test files referenced in test output. Will include them in the context.\n\n`
+  );
+
+  return matchedFiles;
 }
 
 export async function getGitDiff(config: Config): Promise<string> {

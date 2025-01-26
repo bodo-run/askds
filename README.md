@@ -62,4 +62,13 @@ askai npm test
 askds --fix npm test
 ```
 
-You will need to have a Fireworks AI API key set under `FIREWORKS_API_KEY`.
+`--fix` uses Ollama to fix the code. You will need to have Ollama installed and running.
+
+You also need to pull the `fastapply` model and add it to Ollama.
+
+```bash
+./scripts/ollama.sh
+```
+
+> [!NOTE]
+> `fast-apply` is a 7B model, and requires a lot of memory.

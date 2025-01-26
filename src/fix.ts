@@ -8,23 +8,27 @@ import { streamAIResponse, apis } from "./api.js";
 import { findTestFiles } from "./commands.js";
 import {
   DEFAULT_PROMPT,
-  FIX_PROMPT,
+  DEFAULT_FIX_PROMPT,
   FILE_PATH_TAG,
   FIX_END_TAG,
   FIX_START_TAG,
+  UPDATED_CODE_END_TAG,
+  UPDATED_CODE_START_TAG,
+  FIX_FILE_FORMAT_INSTRUCTION,
+  APPLY_CHANGES_INSTRUCTION,
+  ORIGINAL_FILE_START_TAG,
+  ORIGINAL_FILE_END_TAG,
 } from "./constants.js";
 import { Config, Message } from "./types.js";
 import { ui } from "./ui.js";
 
 export function extractFixedCode(aiResponse: string): string | null {
-  const startTag = "<updated-code>";
-  const endTag = "</updated-code>";
-  const start = aiResponse.indexOf(startTag);
-  const end = aiResponse.indexOf(endTag);
+  const start = aiResponse.indexOf(UPDATED_CODE_START_TAG);
+  const end = aiResponse.indexOf(UPDATED_CODE_END_TAG);
 
   if (start === -1 || end === -1) return null;
 
-  return aiResponse.slice(start + startTag.length, end).trim();
+  return aiResponse.slice(start + UPDATED_CODE_START_TAG.length, end).trim();
 }
 
 export async function promptConfirmation(
@@ -63,7 +67,7 @@ export function highlightChanges(original: string, fixed: string): string {
 export async function applyAiFixes(
   config: Config,
   options: { autoApply?: boolean; analysis?: string }
-): Promise<boolean> {
+): Promise<boolean[]> {
   const filesToFix = await identifyFixableFiles(options.analysis);
 
   ui.appendOutputLog(`Fixing ${filesToFix.length} files...\n`);
@@ -72,7 +76,7 @@ export async function applyAiFixes(
     filesToFix.map((file) => processFileFix(file, config, options))
   );
 
-  return results.every((result) => result === true);
+  return results;
 }
 type FileFix = {
   filePath: string;
@@ -146,9 +150,14 @@ async function processFileFix(
   const originalContent = await fs.promises.readFile(fullPath, "utf8");
 
   const messages = createFixMessages(file, originalContent, config);
-  ui.appendOutputLog(chalk.bold(`Asking AI to fix ${file.filePath}...\n`));
+  ui.appendOutputLog(
+    chalk.bold(
+      `Asking ${apis.DEEPSEEK.provider}(${apis.DEEPSEEK.model}) to fix ${file.filePath}...\n`
+    )
+  );
+
   const aiResponse = await streamAIResponse({
-    api: apis.FIREWORKS,
+    api: apis.DEEPSEEK,
     config,
     messages,
   });
@@ -191,9 +200,12 @@ function createFixMessages(
     {
       role: "user",
       content: [
-        `File: ${file.filePath}`,
-        `Current content:\n${currentContent}`,
-        `Fix:\n${file.fixedCode}`,
+        `${FILE_PATH_TAG}${file.filePath}`,
+        `${ORIGINAL_FILE_START_TAG}`,
+        currentContent,
+        `${ORIGINAL_FILE_END_TAG}`,
+        file.fixedCode, // this should include the FIX_START_TAG and FIX_END_TAG
+        `${APPLY_CHANGES_INSTRUCTION}`,
       ].join("\n\n"),
     },
   ];
@@ -209,7 +221,11 @@ function getPrompt(config: Config): string {
   }
 
   if (config.fix) {
-    return [systemPrompt, FIX_PROMPT].join("\n");
+    return [
+      systemPrompt,
+      config.fixPrompt || DEFAULT_FIX_PROMPT,
+      FIX_FILE_FORMAT_INSTRUCTION,
+    ].join("\n");
   }
   return systemPrompt;
 }
@@ -220,7 +236,7 @@ export async function analyzeTestFailure(
   repoStructure: string,
   gitDiff: string
 ): Promise<string> {
-  const testFiles = findTestFiles(testOutput, config);
+  const testFiles = await findTestFiles(testOutput, config);
 
   if (testFiles.length === 0) {
     ui.appendOutputLog(
@@ -254,7 +270,11 @@ export async function analyzeTestFailure(
     },
   ];
 
-  ui.appendReasoningLog("Analyzing test failures...\n");
+  ui.appendReasoningLog(
+    chalk.bold(
+      `Analyzing test failures using ${apis.DEEPSEEK.provider}(${apis.DEEPSEEK.model})...\n`
+    )
+  );
   return streamAIResponse({
     api: apis.DEEPSEEK,
     config,
